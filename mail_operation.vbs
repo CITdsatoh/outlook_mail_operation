@@ -466,19 +466,20 @@ Function Main()
      CurrentMailNum=deletedFolder.Items.Count
      Set OneMailItem=deletedFolder.Items.Item(SaveMailNum+1)
      MailOperation=CountManager.GetState(OneMailItem.SenderEMailAddress,OneMailItem.SenderName)
-     If MailOperation = "保存" Then
-       OneMailItem.Move receiveFolder
-       Do While  CurrentMailNum = deletedFolder.Items.Count 
-           Wscript.Sleep 1000
-       Loop
-     ElseIf MailOperation = "完全削除" Then
-       OneMailItem.Delete
-       Do While  CurrentMailNum = deletedFolder.Items.Count 
-           Wscript.Sleep 1000
-       Loop
-     Else
-       SaveMailNum=SaveMailNum+1
-     End If
+     Select Case MailOperation
+       Case "保存"
+        OneMailItem.Move receiveFolder
+        Do While  CurrentMailNum = deletedFolder.Items.Count 
+            Wscript.Sleep 1000
+        Loop
+       Case "完全削除"
+        OneMailItem.Delete
+        Do While  CurrentMailNum = deletedFolder.Items.Count 
+            Wscript.Sleep 1000
+        Loop
+       Case Else
+        SaveMailNum=SaveMailNum+1
+    End Select
   Loop
    
   
@@ -557,25 +558,26 @@ Function Main()
           
         'メールの扱い方（宛先によってメールをどう扱うか)
         '保存する場合
-        If MailOperation = "保存" Then
-          'このメールは消さずに参照するメールのインデックスを1進める
-          SaveMailNum=SaveMailNum+1
-        ElseIf MailOperation = "完全削除" Then
-          OneMailItem.Delete
-          '削除が完了するまで待つ
-          Do While  CurrentMailNum = receiveFolder.Items.Count 
-            Wscript.Sleep 1000
-          Loop
-        Else
-          OneMailItem.Move deletedFolder
-          '移動が完了するまで待つ
-          Do While  CurrentMailNum = receiveFolder.Items.Count
-            Wscript.Sleep 1000
-          Loop
-        End If
-      End If 
+        Select  Case MailOperation
+          Case  "保存"
+           'このメールは消さずに参照するメールのインデックスを1進める
+           SaveMailNum=SaveMailNum+1
+          
+          Case"完全削除"
+           OneMailItem.Delete
+           '削除が完了するまで待つ
+           Do While  CurrentMailNum = receiveFolder.Items.Count 
+             Wscript.Sleep 1000
+           Loop
+          Case Else
+           OneMailItem.Move deletedFolder
+           '移動が完了するまで待つ
+           Do While  CurrentMailNum = receiveFolder.Items.Count
+             Wscript.Sleep 1000
+           Loop
+        End Select
+     End If
        
-        
     Loop
       
     If EnterFlag Then

@@ -93,6 +93,7 @@ Class Manager
   Public FileName
   Public BackupFileName
   Public LogFile
+  Public NumLogFile
   Public WshObj
   Public FDate
   
@@ -104,10 +105,15 @@ Class Manager
    BackupFolder=WshObj.SpecialFolders(5)
    BackupFileName=BackupFolder&"\"&FileName
    LogFile=BackupFolder&"\datelog.log"
+   NumLogFile=BackupFolder&"\mail_num.log"
    SetFileDate
   End Sub
   
   Public Sub Class_Terminate()
+    Dim i
+    For i=LBound(AddrNumLists) To UBound(AddrNumLists)
+      Set AddrNumLists(i)=Nothing
+    Next
   End Sub
   
   'メールをカウントする(カウントが0、つまりまだその宛先からのメールが存在しない場合は,新しくオブジェクトを作る)
@@ -188,7 +194,7 @@ Class Manager
       FReading FileName
     ElseIf FSObj.FileExists(BackupFileName) Then
       Set FObj=FSObj.GetFile(BackupFileName)
-      FSObj.attributes=0
+      FObj.attributes=0
       FReading BackupFileName
     End If
     
@@ -197,13 +203,30 @@ Class Manager
   
   Public Function  FReading(FName)
    Dim FReader
-    
+   
+   Dim FileOpen
+   FileOpen=True
+   
    Set FReader=Wscript.CreateObject("ADODB.Stream")
    FReader.Type=2
    FReader.Charset="UTF-8"
    FReader.LineSeparator=10
    FReader.Open
-   FReader.LoadFromFile FName
+  
+   'ファイルからデータを取得する際に,そのファイル自体が開かれていた時はエラーが出るので,Fileが閉じられるまで永久ループする
+   Do While FileOpen
+     On Error Resume Next
+      FReader.LoadFromFile FName
+      
+      'エラーがなかった（ファイルが閉じられていたら),ここにたどり着くので,FileOpenフラグを卸して,ループを抜ける
+      If Err.Number = 0 Then
+        FileOpen=False
+      End If
+      
+     On Error GoTo 0 
+     
+   Loop
+       
      
    '1行目はヘッダなので情報として必要ない。
    'とりあえず,1回全部の行についてデータを取得する
@@ -245,12 +268,24 @@ Class Manager
   Public Function GetRealModifiedDate()
     Dim DateDataStr
     Dim FReader
+    Dim FileOpen
+    FileOpen=True
+    
     Set FReader=Wscript.CreateObject("ADODB.Stream")
     FReader.Type=2
     FReader.Charset="UTF-8"
     FReader.LineSeparator=10
     FReader.Open
-    FReader.LoadFromFile LogFile
+    
+    Do While FileOpen
+      On Error Resume Next
+        FReader.LoadFromFile LogFile
+        If Err.Number = 0 Then
+          FileOpen=False
+        End If
+      On Error GoTo 0 
+    Loop
+    
     Do While FReader.EOS = False
       DateDataStr=FReader.ReadText(-2)
       Exit Do
@@ -292,7 +327,16 @@ Class Manager
       
   Next
         
-  End Function    
+  End Function
+  
+  Public Function GetSumMailNum()
+   GetSumMailNum=0
+   Dim i
+   For i= 1 To UBound(AddrNumLists)
+      GetSumMailNum=GetSumMailNum+AddrNumLists(i).GetNum()
+   Next
+   
+  End Function
   
   Public Function FWrite()
   
@@ -317,15 +361,27 @@ Class Manager
     
     '合計メール数(1番最後の行に書いておく)
     Dim MailSum
-    MailSum=0
+    MailSum=GetSumMailNum()
+    
     For i= 1 To UBound(AddrNumLists)
-      MailSum=MailSum+AddrNumLists(i).GetNum()
       FWriter.WriteText AddrNumLists(i).ToStr(),1
-    Next
+   Next
+   
     
     FWriter.WriteText "合計,,,"&MailSum&",",1
     
-    FWriter.SaveToFile FileName,2
+    Dim FileOpen
+    FileOpen=True
+    
+    Do While FileOpen
+      On Error Resume Next
+        FWriter.SaveToFile FileName,2
+        If Err.Number = 0 Then
+          FileOpen=False
+        End If
+      On Error GoTo 0 
+    Loop
+    
     FWriter.Close
     
     Set FWriter=Nothing
@@ -335,15 +391,23 @@ Class Manager
     'バックアップファイルがない場合エラーが出る
     On Error Resume Next
       CpyFso.GetFile(BackupFileName).attributes=0
-    On Error Goto 0
+    On Error GoTo 0 
     
-    CpyFso.CopyFile FileName,BackupFileName,True
-    CpyFso.GetFile(BackupFileName).attributes=1
+    FileOpen=True
+    Do While FileOpen
+      
+      On Error Resume Next
+        CpyFso.CopyFile FileName,BackupFileName,True
+        If Err.Number = 0 Then
+          FileOpen=False
+        End If
+        CpyFso.GetFile(BackupFileName).attributes=1
+      On Error GoTo 0
+    Loop
+      
     Set CpyFso=Nothing
    
-    For i=LBound(AddrNumLists) To UBound(AddrNumLists)
-      Set AddrNumLists(i)=Nothing
-    Next
+    
     
   End Function
   
@@ -351,18 +415,85 @@ Class Manager
   Public Function LogWrite(LastMailDate)
     Dim FWriter
     Set FWriter=Wscript.CreateObject("ADODB.Stream")
+    Dim FileOpen
+    FileOpen=True
+    
     FWriter.Type=2
     FWriter.Charset="UTF-8"
     FWriter.Open
     FWriter.WriteText ""&LastMailDate,1
-    FWriter.SaveToFile LogFile,2
+    
+    Do While FileOpen
+      On Error Resume Next
+        FWriter.SaveToFile LogFile,2
+        If Err.Number = 0 Then
+          FileOpen=False
+        End If
+      On Error GoTo 0 
+    Loop
+    
     FWriter.Close
     Set FWriter=Nothing
     Wscript.CreateObject("Scripting.FileSystemObject").GetFile(LogFile).attributes=1
   End Function
   
-  
+  Public Function NumLogWrite(LastMailDate)
+    Dim NowDate
+    NowDate=Now
+    
+    Dim MailNum
+    MailNum=GetSumMailNum()
+    
+    Dim FirstDate
+    FirstDate=AddrNumLists(1).GetFirstDate
+    
+    Dim FWriter
+    Set FWriter=Wscript.CreateObject("ADODB.Stream")
+    
+    Dim FSObj
+    Set FSObj=Wscript.CreateObject("Scripting.FileSystemObject")
+    
+    Dim FileOpen
+    FileOpen=True
+    
+    FWriter.Type=2
+    FWriter.Charset="UTF-8"
+    FWriter.Open
+    
+    If FSObj.FileExists(NumLogFile) Then
+      FWriter.LoadFromFile NumLogFile
+      FWriter.Position=FWriter.Size
+      FWriter.WriteText Now&","&LastMailDate&","&MailNum,1
+      Do While FileOpen
+        On Error Resume Next
+          FWriter.SaveToFile NumLogFile,2
+          If Err.Number = 0 Then
+            FileOpen=False
+          End If
+        On Error GoTo 0 
+      Loop
       
+    Else
+      FWriter.WriteText "プログラム実行時刻,その時点での最新のメール時刻,"&FirstDate&"からその時点までの累積メール数",1
+      FWriter.WriteText Now&","&LastMailDate&","&MailNum,1
+      Do While FileOpen
+       On Error Resume Next
+          FWriter.SaveToFile NumLogFile,2
+          If Err.Number = 0 Then
+            FileOpen=False
+          End If
+          
+       On Error GoTo 0 
+      Loop
+    End If
+    
+    FWriter.Close
+    Set FWriter=Nothing
+    FSobj.GetFile(NumLogFile).attributes=0
+    Set FSobj=Nothing
+ End Function
+  
+     
 
 End Class
 
@@ -526,68 +657,74 @@ Function Main()
   
   Dim LastMailTime
   LastMailTime=LastCountMailDate
+  
+  Dim HasError
+  HasError=0
  
   Do While CountWaitSec < NormSec 
     Do While SaveMailNum < receiveFolder.Items.Count
       'メールを消去(削除済みフォルダ）に移動させると,受信トレーのメールが減るので,ずっと,同じインデックスをアクセスする
       EnterFlag=True
       CurrentMailNum=receiveFolder.Items.Count
-      Set OneMailItem=receiveFolder.Items.Item(SaveMailNum+1)
-      Name=OneMailItem.SenderName
-      Addr=OneMailItem.SenderEmailAddress
-      Time=OneMailItem.ReceivedTime
+      On Error Resume Next
+       Set OneMailItem=receiveFolder.Items.Item(SaveMailNum+1)
+       HasError=Err.Number
+      On Error GoTo 0
       
-      If HasMailInFolder(OneMailItem,deletedFolder) Then
-         TestFolderMailNum=TestFolder.Items.Count
-         OneMailItem.Move TestFolder
-         Do While  TestFolderMailNum = TestFolder.Items.Count
-           Wscript.Sleep 1000
-           Wscript.Echo "待機中"
-         Loop
-      Else
-        If LastCountMailDate < Time Then
-          CountManager.Count Addr,Name,Time
-        End If
-        
-        If LastMailTime < Time Then
-          LastMailTime=Time
-        End If
-        
-       
-        MailOperation=CountManager.GetState(Addr,Name)
+      If HasError = 0 Then
+      
+        Name=OneMailItem.SenderName
+        Addr=OneMailItem.SenderEmailAddress
+        Time=OneMailItem.ReceivedTime
           
-        'メールの扱い方（宛先によってメールをどう扱うか)
-        '保存する場合
-        Select  Case MailOperation
-          Case  "保存"
-           'このメールは消さずに参照するメールのインデックスを1進める
-           SaveMailNum=SaveMailNum+1
-          
-          Case"完全削除"
-           OneMailItem.Delete
-           '削除が完了するまで待つ
-           Do While  CurrentMailNum = receiveFolder.Items.Count 
-             Wscript.Sleep 1000
-           Loop
-          Case Else
-           OneMailItem.Move deletedFolder
-           '移動が完了するまで待つ
-           Do While  CurrentMailNum = receiveFolder.Items.Count
-             Wscript.Sleep 1000
-           Loop
-        End Select
-     End If
+        If HasMailInFolder(OneMailItem,deletedFolder) Then
+          TestFolderMailNum=TestFolder.Items.Count
+          OneMailItem.Move TestFolder
+          Do While  TestFolderMailNum = TestFolder.Items.Count
+            Wscript.Sleep 1000
+          Loop
+       Else
+          If LastCountMailDate < Time Then
+            CountManager.Count Addr,Name,Time
+          End If
+            
+          If LastMailTime < Time Then
+            LastMailTime=Time
+          End If
+            
+           
+          MailOperation=CountManager.GetState(Addr,Name)
+              
+          'メールの扱い方（宛先によってメールをどう扱うか)
+           
+          '保存する場合
+          Select  Case MailOperation
+            Case  "保存"
+             'このメールは消さずに参照するメールのインデックスを1進める
+             SaveMailNum=SaveMailNum+1
+              
+            Case"完全削除"
+             OneMailItem.Delete
+             '削除が完了するまで待つ
+             Do While  CurrentMailNum = receiveFolder.Items.Count 
+               Wscript.Sleep 1000
+             Loop
+            Case Else
+              OneMailItem.Move deletedFolder
+              '移動が完了するまで待つ
+              Do While  CurrentMailNum = receiveFolder.Items.Count
+                Wscript.Sleep 1000
+              Loop
+            End Select
+          End If
+      End If
+      
+     
        
     Loop
       
     If EnterFlag Then
       CountWaitSec=0
-      If CountTimes <= 100 Then
-        CountTimes=CountTimes+1
-      End If
-      Dim Bias
-      Bias=(CountTimes\5)+1
-      NormSec=30\Bias
       EnterFlag=False
     End If
       
@@ -597,10 +734,13 @@ Function Main()
     
   Loop
   
-  '結果をファイルに記入
+
   CountManager.FWrite()
+ 
   CountManager.LogWrite(LastMailTime)
   
+  CountManager.NumLogWrite(LastMailTime)
+     
   Set OneMailItem=Nothing
   
   Set CountManager=Nothing

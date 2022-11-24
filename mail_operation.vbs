@@ -99,11 +99,14 @@ Class Manager
   
   Public Sub Class_Initialize()
    ReDim AddrNumLists(0)
-   FileName="outlook_mail_dest_list.csv"
    Set WshObj=Wscript.CreateObject("Wscript.Shell")
+   Dim DesktopFolder
+   DesktopFolder=WshObj.SpecialFolders(4)
+   
+   FileName=DesktopFolder&"\outlook_mail_dest_list.csv"
    Dim BackupFolder
    BackupFolder=WshObj.SpecialFolders(5)
-   BackupFileName=BackupFolder&"\"&FileName
+   BackupFileName=BackupFolder&"\outlook_mail_dest_list.csv"
    LogFile=BackupFolder&"\datelog.log"
    NumLogFile=BackupFolder&"\mail_num.log"
    SetFileDate
@@ -222,7 +225,6 @@ Class Manager
       If Err.Number = 0 Then
         FileOpen=False
       End If
-      
      On Error GoTo 0 
      
    Loop
@@ -385,6 +387,7 @@ Class Manager
     FWriter.Close
     
     Set FWriter=Nothing
+    
      
     Dim CpyFso
     Set CpyFso=Wscript.CreateObject("Scripting.FileSystemObject")
@@ -423,6 +426,10 @@ Class Manager
     FWriter.Open
     FWriter.WriteText ""&LastMailDate,1
     
+    If Wscript.CreateObject("Scripting.FileSystemObject").FileExists(LogFile) Then
+      Wscript.CreateObject("Scripting.FileSystemObject").GetFile(LogFile).attributes=0
+    End If
+    
     Do While FileOpen
       On Error Resume Next
         FWriter.SaveToFile LogFile,2
@@ -459,6 +466,7 @@ Class Manager
     FWriter.Type=2
     FWriter.Charset="UTF-8"
     FWriter.Open
+    FSobj.GetFile(NumLogFile).attributes=0
     
     If FSObj.FileExists(NumLogFile) Then
       FWriter.LoadFromFile NumLogFile
@@ -489,7 +497,7 @@ Class Manager
     
     FWriter.Close
     Set FWriter=Nothing
-    FSobj.GetFile(NumLogFile).attributes=0
+    FSobj.GetFile(NumLogFile).attributes=1
     Set FSobj=Nothing
  End Function
   
@@ -560,6 +568,12 @@ Function Main()
   Set deletedFolder=namespace.GetDefaultFolder(3)
   
   
+  
+  'テスト用完全削除済みフォルダ―(テストの時はいきなり完全削除しない)
+  Dim testCompDeleteFolder
+  Set testCompDeleteFolder=deletedFolder.Folders("test_comp_delete")
+  
+  
   'outlookを最小化して起動(相手にoutlookが起動していることがわからないようにする)
   Set Wsh=Wscript.CreateObject("Wscript.shell")
   Wsh.Run "outlook.exe",7,False
@@ -589,6 +603,8 @@ Function Main()
   SaveMailNum=0
   
   Dim CurrentMailNum
+  
+  Dim TestDeleteMailNum
  
  
    
@@ -604,8 +620,11 @@ Function Main()
             Wscript.Sleep 1000
         Loop
        Case "完全削除"
-        OneMailItem.Delete
-        Do While  CurrentMailNum = deletedFolder.Items.Count 
+        'OneMailItem.Delete
+        TestDeleteMailNum=testCompDeleteFolder.Items.Count
+        OneMailItem.Move testCompDeleteFolder
+        'Do While  CurrentMailNum = deletedFolder.Items.Count 
+        Do While TestDeleteMailNum = testCompDeleteFolder.Items.Count
             Wscript.Sleep 1000
         Loop
        Case Else
@@ -623,7 +642,10 @@ Function Main()
   '次は受信アイテムの中を見てゆくが,受信アイテムの読み込みとこの処理は非同期であることから少しタイムラグを設ける必要がある
   'タイムラグ用の変数
   Dim NormSec
-  NormSec=30
+  NormSec=60
+  
+  Dim CurrentNormSec
+  CurrentNormSec=NormSec
  
  
   Dim CountTimes
@@ -634,13 +656,13 @@ Function Main()
  
   Dim EnterFlag
   EnterFlag=False
+  
+  Dim EnterTime
+  EnterTime=0
  
   '最後にいつメールのカウントを行ったのかを得る(保存フォルダから重複カウントをしないように)
   Dim LastCountMailDate
   LastCountMailDate=CountManager.GetModifiedFileDate()
-  
-  Dim TestFolder
-  Set TestFolder=deletedFolder.Folders("test")
   
   
   'カウンタ変数
@@ -660,15 +682,21 @@ Function Main()
   
   Dim HasError
   HasError=0
+  
+  Dim CurrentDeletedFolderMailNum
  
-  Do While CountWaitSec < NormSec 
+  Do While CountWaitSec < CurrentNormSec 
     Do While SaveMailNum < receiveFolder.Items.Count
       'メールを消去(削除済みフォルダ）に移動させると,受信トレーのメールが減るので,ずっと,同じインデックスをアクセスする
       EnterFlag=True
-      CurrentMailNum=receiveFolder.Items.Count
+      
       On Error Resume Next
        Set OneMailItem=receiveFolder.Items.Item(SaveMailNum+1)
        HasError=Err.Number
+       If HasError <> 0 Then
+         Wscript.Echo HasError
+         Wscript.Echo "エラー"
+       End If
       On Error GoTo 0
       
       If HasError = 0 Then
@@ -678,12 +706,13 @@ Function Main()
         Time=OneMailItem.ReceivedTime
           
         If HasMailInFolder(OneMailItem,deletedFolder) Then
-          TestFolderMailNum=TestFolder.Items.Count
-          OneMailItem.Move TestFolder
-          Do While  TestFolderMailNum = TestFolder.Items.Count
-            Wscript.Sleep 1000
-          Loop
-       Else
+          On Error Resume Next
+          OneMailItem.Delete
+          'Do While  CurrentMailNum = receiveFolder.Items.Count 
+            'Wscript.Sleep 1000
+          'Loop
+          On Error GoTo 0
+        Else
           If LastCountMailDate < Time Then
             CountManager.Count Addr,Name,Time
           End If
@@ -692,7 +721,9 @@ Function Main()
             LastMailTime=Time
           End If
             
-           
+          CurrentMailNum=receiveFolder.Items.Count
+          CurrentDeletedFolderMailNum=deletedFolder.Items.Count
+          TestFolderMailNum=testCompDeleteFolder.Items.Count
           MailOperation=CountManager.GetState(Addr,Name)
               
           'メールの扱い方（宛先によってメールをどう扱うか)
@@ -704,19 +735,23 @@ Function Main()
              SaveMailNum=SaveMailNum+1
               
             Case"完全削除"
-             OneMailItem.Delete
+             'On Error Resume Next
+             'OneMailItem.Delete
+             'On Error GoTo 0
+             OneMailItem.Move testCompDeleteFolder
              '削除が完了するまで待つ
-             Do While  CurrentMailNum = receiveFolder.Items.Count 
+             Do While  CurrentMailNum = receiveFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
                Wscript.Sleep 1000
              Loop
+             
             Case Else
               OneMailItem.Move deletedFolder
               '移動が完了するまで待つ
-              Do While  CurrentMailNum = receiveFolder.Items.Count
+              Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
                 Wscript.Sleep 1000
               Loop
             End Select
-          End If
+        End If
       End If
       
      
@@ -725,10 +760,15 @@ Function Main()
       
     If EnterFlag Then
       CountWaitSec=0
+      EnterTime=EnterTime+1
       EnterFlag=False
+      Dim Bias
+      Bias=(EnterTime+1)\2
+      CurrentNormSec=NormSec\Bias
     End If
       
     Wscript.Sleep 1000
+    
       
     CountWaitSec=CountWaitSec+1
     

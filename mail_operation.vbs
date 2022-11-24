@@ -7,16 +7,13 @@ Class AddrNumSet
   Public FirstDate
   Public mailNum
   Public State
-  Public IsFirst
-  Public DataPool ()
   
   Public Sub Class_Initialize()
     DstAddress=""
     DstName=""
     mailNum=0
-    State="íœÏ‚İ‚ÖˆÚ“®"
+    State="å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
     ReDim DataPool(0)
-    IsFirst=True
   End Sub
   
   Public Sub Class_Terminate()
@@ -31,8 +28,12 @@ Class AddrNumSet
    
   End Function
   
-  Public Function SetFirstDate(FDate)
-    FirstDate=CDate(FDate)
+  Public Function AddDate(FDate)
+    If IsEmpty(FirstDate) Then
+      FirstDate=FDate
+    ElseIf FDate < FirstDate Then
+      FirstDate=FDate
+    End If
   End Function
   
   Public Function NumIncrement()
@@ -56,28 +57,7 @@ Class AddrNumSet
   End Function
   
   Public Function GetFirstDate()
-   If Not IsEmpty(FirstDate) Then
-    GetFirstDate=CDate(FirstDate)
-    Exit Function
-   End If
-   
-   GetFirstDate=DataPool(1)
-   FirstDate=DataPool(1)
-   Dim i
-   For i=2 To UBound(DataPool)
-     If DataPool(i) < GetFirstDate Then
-       GetFirstDate=DataPool(i)
-       FirstDate=DataPool(i)
-     End If
-   Next
-   
-  End Function
-  
-  Public Function AddDataPool(NewDate)
-    If IsEmpty(FirstDate) Then
-     ReDim Preserve DataPool(UBound(DataPool)+1)
-     DataPool(UBound(DataPool))=NewDate
-    End If
+   GetFirstDate=FirstDate
   End Function
   
   Public Function ToStr()
@@ -86,6 +66,515 @@ Class AddrNumSet
 
 End Class
 
+
+Class DataManager
+
+   Public AddrNumLists()
+   
+   Public Sub Class_Initialize()
+    ReDim AddrNumLists(0)
+   End Sub
+   
+   Public Sub Class_Terminate()
+    Dim i
+    For i=LBound(AddrNumLists) To UBound(AddrNumLists)
+      Set AddrNumLists(i)=Nothing
+    Next
+   End Sub
+   
+   Public Function ParseDataFromFileContent(OneData)
+    ReDim Preserve AddrNumLists(UBound(AddrNumList+1))
+    Dim NewObj
+    Set NewObj=new AddrNumSet
+    If UBound(OneData) = 4 Then
+       Select Case OneData(4)
+        Case "ä¿å­˜","å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•","å®Œå…¨å‰Šé™¤"
+          NumObj.SetValue OneData(0),oneData(1),OneData(3),OneData(4)
+        Case Else
+           NumObj.SetValue OneData(0),oneData(1),OneData(3),"å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
+       End Select
+    ElseIf UBound(OneData) >= 3 Then
+       NumObj.SetValue OneData(0),OneData(1),OneData(3),"å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
+    End If
+    On Error Resume Next
+     NewObj.AddDate CDate(OneData(2))
+    On Error GoTo 0
+    AddrNumLists(UBound(AddrNumLists))=NewObj
+    
+   End Function
+    
+    
+   Public Function DataIndex(Address,Name)
+    Dim i
+    For i=1 To UBound(AddrNumLists)
+      If And AddrNumLists(i).GetAddress = Address AddrNumLists(i).GetName = Name Then
+        DataIndex=i
+        Exit Function
+      End If
+    Next
+    DataIndex=-1
+   End Function
+   
+   Public Function DataExists(Address,Name)
+     If DataIndex(Address,Name) <> -1 Then
+       DataExists=True
+       Exit Function
+     End If
+     DataExists=False
+   End Function
+   
+   Public Function Count(Address,Name,Date)
+    Dim index
+    index=DataIndex(Address,Name)
+    If index <> -1 Then
+      AddrNumLists(index).NumIncrement()
+      AddrNumLists(index).AddData Date
+      Exit Function
+    End If
+    
+    ReDim Preserve AddrNumLists(UBound(AddrNumLists)+1)
+    Dim NewObj
+    Set NewObj=New AddrNumSet
+    NumObj.SetValue Addr,Name,"1","å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
+    NumObj.AddData Date
+    Set AddrNumLists(UBound(AddrNumLists))=NumObj
+   End Function
+   
+   Public Function GetSumMailNum()
+    GetSumMailNum=0
+    Dim i
+    For i= 1 To UBound(AddrNumLists)
+      GetSumMailNum=GetSumMailNum+AddrNumLists(i).GetNum()
+    Next
+  End Function
+  
+  Public GetCountStartDate()
+    DateSort
+    GetCountStartDate=AddrNumLists(1).GetFirstDate
+  End Function
+  
+   'ãã®å®›å…ˆã‹ã‚‰ã®ãƒ¡ãƒ¼ãƒ«ã®æ•°ã‚’è¿”ã™
+  Public Function GetNum(Address,Name)
+    Dim index
+    index=DataIndex(Address,Name)
+    If index <> -1 Then
+      GetNum=AddrNumLists(index).getNum()
+      Exit Function
+    End If
+    
+    GetNum=0
+  End Function
+  
+  'ãã®å®›å…ˆã®ãƒ¡ãƒ¼ãƒ«ã‚’ã©ã®ã‚ˆã†ã«æ‰±ã†ã‹(å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•ï¼ˆãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ)ã‹ã€ä¿å­˜ã‹,å®Œå…¨å‰Šé™¤ã‹)
+  Public Function GetState(Address,Name)
+    Dim index
+    index=DataIndex(Address,Name)
+    If index <> -1 Then
+      GetState=AddrNumLists(index).GetMailState()
+      Exit Function
+    End If
+    GetState="å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
+  End Function
+  
+  
+  'åˆã‚ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«æ›¸ãè¾¼ã‚€éš›,è¡¨ç¤ºé †ã‚’æ™‚é–“é †ã«ã™ã‚‹å¿…è¦ãŒã‚ã‚‹
+  Public Function DateSort()  
+    Dim i
+    Dim j
+    Dim tmp
+    Dim head
+    head=1
+    
+   For i=2 To UBound(AddrNumLists)   
+      j=i
+      'VBSã§ã¯çŸ­çµ¡è©•ä¾¡ã—ã¦ãã‚Œãªã„ã®ã§,ä¸€ç•ªæœ€åˆã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã‚ˆã‚Šå‰ã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã«ã‚¢ã‚¯ã‚»ã‚¹ã—ã¦ã—ã¾ã„ã‚¨ãƒ©ãƒ¼ãŒå‡ºã‚‹ã®ã§
+      'ã“ã“ã§ã¯,ä¸€ç•ªæœ€åˆã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã®1ã¤å‰ã¾ã§ã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã«ã¤ã„ã¦ã‚½ãƒ¼ãƒˆã—
+      Do While (j > head+1) And(AddrNumLists(j-1).GetFirstDate() > AddrNumLists(j).GetFirstDate())
+        Set tmp=AddrNumLists(j)
+        Set AddrNumLists(j)=AddrNumLists(j-1)
+        Set AddrNumLists(j-1)=tmp
+        j=j-1
+      Loop
+      
+      'æœ€å¾Œã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã ã‘ã“ã“ã§åˆ¥é€”è¡Œã†
+      If (AddrNumLists(head).GetFirstDate() > AddrNumLists(head+1).GetFirstDate()) Then
+        Set tmp=AddrNumLists(head)
+        Set AddrNumLists(head)=AddrNumLists(head+1)
+        Set AddrNumLists(head+1)=tmp
+      End If
+      
+   Next
+        
+  End Function
+  
+ 
+  
+  Public Function ToFileWriteStr()
+   
+   
+    Dim Header
+    Dim Today
+    Dim FWriter
+    Today=Date()
+    Dim FirstDate
+    FirstDate=GetCountStartDate
+    
+    Dim Header
+    Header="ãƒ¡ãƒ¼ãƒ«ã‚¢ãƒ‰ãƒ¬ã‚¹,å®›å,"&FirstDate&"ä»¥é™ã§æœ€ã‚‚æ—©ããã®å®›å…ˆã‹ã‚‰ãƒ¡ãƒ¼ãƒ«ãŒå±Šã„ãŸæ—¥ä»˜,"&FirstDate&"ã‹ã‚‰"&Today&"ã¾ã§ã«å±Šã„ãŸãƒ¡ãƒ¼ãƒ«ã®æ•°,ãƒ¡ãƒ¼ãƒ«ã®å–ã‚Šæ‰±ã„"
+    
+    Dim Content
+    ReDim Preserve Content(0)
+    Content(0)=Header
+    Dim i
+    For i=1 To UBound(AddrNumLists)
+     ReDim Preserve Content(UBound(Content)+1)
+     Content(UBound(Content))=AddrNumLists(i).ToStr
+    Next
+    
+    ReDim Preserve Content(UBound(Content)+1)
+    Dim Footer
+    Dim MailSum
+    MailSum=GetSumMailNum()
+    Footer="åˆè¨ˆ,,,"&MailSum&","
+    Content(UBound(Content))=Footer
+    
+    Set ToFileWriteStr=Content
+    
+  End Function
+
+End Class
+    
+    
+   
+Class FileOperator
+
+  Public FIOOperator
+  
+  Public Sub  Class_Initialize()
+   Set FIOOperator=Wscript.CreateObject("ADODB.Stream")
+   FIOOperator.Type=2
+   FIOOperator.Charset="UTF-8"
+   FIOOperator.LineSeparator=10
+  End Sub
+  
+  Public Sub Class_Terminate()
+   Set FIOOperator=Nothing
+  End Sub
+  
+  Public Function FRead(FilePath)
+  
+   FIOOperator.Open
+   
+   Dim FileOpen
+   FileOpen=True
+   
+   'ãƒ•ã‚¡ã‚¤ãƒ«ã‹ã‚‰ãƒ‡ãƒ¼ã‚¿ã‚’å–å¾—ã™ã‚‹éš›ã«,ãã®ãƒ•ã‚¡ã‚¤ãƒ«è‡ªä½“ãŒé–‹ã‹ã‚Œã¦ã„ãŸæ™‚ã¯ã‚¨ãƒ©ãƒ¼ãŒå‡ºã‚‹ã®ã§,FileãŒé–‰ã˜ã‚‰ã‚Œã‚‹ã¾ã§æ°¸ä¹…ãƒ«ãƒ¼ãƒ—ã™ã‚‹
+   Do While FileOpen
+     On Error Resume Next
+      FIOOperator.LoadFromFile FilePath
+      
+      'ã‚¨ãƒ©ãƒ¼ãŒãªã‹ã£ãŸï¼ˆãƒ•ã‚¡ã‚¤ãƒ«ãŒé–‰ã˜ã‚‰ã‚Œã¦ã„ãŸã‚‰),ã“ã“ã«ãŸã©ã‚Šç€ãã®ã§,FileOpenãƒ•ãƒ©ã‚°ã‚’å¸ã—ã¦,ãƒ«ãƒ¼ãƒ—ã‚’æŠœã‘ã‚‹
+      If Err.Number = 0 Then
+        FileOpen=False
+      End If
+     On Error GoTo 0 
+     
+   Loop
+   
+   Dim Result
+   ReDim Result()
+   Dim LineNum
+   LineNum=0
+   Dim OneLine
+   
+   Do While FIOOperator.EOS = False
+     ReDim Preserve Result(LineNum)
+     OneLine=FIOOperator.ReadText(-2)
+     Result(LineNum)=OneLine
+     LineNum=LineNum+1
+   Loop
+   
+   Set FRead=Result
+     
+   FIOOperator.Close
+  
+  End Function 
+  
+  Public Function FWrite(FilePath,Contents,Mode,WriteType)
+    Dim FileOpen
+    
+    FIOOperator.Open
+    Select Case Mode
+      Case "a","A"
+       FileOpen=True
+       Do While FileOpen
+        On Error Resume Next
+          FIOOperator.LoadFromFile FilePath
+          If Err.Number = 0 Then
+            FileOpen=False
+          End If
+        On Error GoTo 0
+       Loop
+       FIOOperator.Position=FWriter.Size
+    End Select
+    
+    Select Case WriteType
+     Case "Str"
+       FIOOperator.WriteText Contents,1
+     Case Else
+       Dim i
+       For i= LBound(Contents) To UBound(Contents)
+         FIOOperator.WriteText Contents(i),1
+       Next
+    End Select
+  
+    FileOpen=True
+    
+    Do While FileOpen
+      On Error Resume Next
+        FIOOperator.SaveToFile FilePath,2
+        If Err.Number = 0 Then
+          FileOpen=False
+        End If
+      On Error GoTo 0 
+    Loop
+    
+    FIOOperator.Close
+    
+  End Function
+
+End Class
+
+Class DateManager
+  Public FirstMailDate
+  Public LastMailDate
+  Public ExeDate
+  
+
+End Class
+
+Class FileManager
+
+  Public FIO
+  Public WshObj
+  Public FSObj
+  Public OriginalFileName
+  Public BackupFileName
+  Public TimeLogFile
+  Public NumLogFile
+  Public BackupLogFolder
+  
+  
+  Public Sub Class_Initialize()
+   Set WshObj=Wscript.CreateObject("Wscript.Shell")
+   Set FSObj=Wscript.CreateObject("Scripting.FileSystemObject")
+   Set FIO=New FileOperator
+   Dim DesktopFolder
+   DesktopFolder=WshObj.SpecialFolders(4)
+   OriginalFileName=DesktopFolder&"\outlook_mail_dest_list.csv"
+   Dim BackupFolder
+   BackupFolder=WshObj.SpecialFolders(5)
+   BackupFileName=BackupFolder&"\outlook_mail_dest_list.csv"
+   BackupLogFolder=BackupFolder&"\backup"
+   TimeLogFile=BackupFolder&"\datelog.log"
+   NumLogFile=BackupFolder&"\mail_num.log"
+  End Sub
+  
+  Public Sub Class_Terminate()
+   Set WshObj=Nothing
+   Set FSObj=Nothing
+   Set FIO=Nothing
+  End Sub
+  
+  Public Function GetDataManageObj()
+   Set GetDataManageObj=new DataManager
+   Dim FileContents
+   If FSObj.FileExists(OriginalFileName) Then
+     FileContents=FIO.FRead(OriginalFileName)
+   ElseIf FSobj.FileExists(BackupFolder) Then
+     Dim FObj
+     Set FObj=FSObj.GetFile(BackupFileName)
+     ChangeFileAttributes(BackupFileName)
+     FileContents=FIO.FRead(BackuplFileName)
+     ChangeFileAttributes(BackupFileName)
+     Set FObj=Nothing
+   Else
+     Exit Function
+   End If
+   
+   Dim i
+   Dim AllDataWithoutBr
+   Dim OneData
+   'ãƒ˜ãƒƒãƒ€ã¯ã„ã‚‰ãªã„ã®ã§1ç•ªç›®ã‹ã‚‰å–å¾—ã™ã‚‹ã€‚ãã—ã¦æœ€å¾Œã®è¡Œã¯åˆè¨ˆãªã®ã§ãã‚Œã‚‚ã„ã‚‰ãªã„
+   For i=1 To UBound(FileContents)-1
+     AllDataWithoutBr=Replace(FileContents(i),VbCr,"")
+     OneData=Split(AllDataWithoutBr,",")
+     GetDataManageObj.ParseDataFromFileContent OneData
+   Next
+   
+  End Function
+  
+  Public Function GetLastMailDate()
+   'ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã‹ã‚‰æœ€å¾Œã«ãƒ¡ãƒ¼ãƒ«ã‚’ãƒã‚§ãƒƒã‚¯ã—ãŸæ—¥ä»˜æƒ…å ±ã‚’å¾—ã‚‹
+   If FSObj.FileExists(TimeLogFile) Then
+    ChangeFileAttributes(TimeLogFile)
+    Dim Contents
+    Contents=FIO.FRead(TimeLogFile)
+    ChangeFileAttributes(TimeLogFile)
+    GetLastMailDate=CDate(Replace(Contents(0),VbCr,""))
+   ElseIf FSObj.FileExists(OriginalFileName) Then
+    'Logãƒ•ã‚¡ã‚¤ãƒ«ãŒãªã‹ã£ãŸå ´åˆã“ã®æ—¥ä»˜ã§ä»£ç”¨ã™ã‚‹
+    GetLastMailDate=FSObj.GetFile(OriginalFileName).DateLastModified
+   ElseIf FSObj.FileExists(BackupFileName) Then
+    GetLastMailDate=FSObj.GetFile(BackupFileName).DateLastModified
+   Else
+    GetLastMailDate=CDate("1970/1/1")
+   End If
+   
+  End Function
+  
+  Public Function WriteResultDataManageObj(DataManageObj)
+   FIO.FWrite OriginalFileName,DataManageObj.ToFileWriteStr(),"w","Array"
+   Copy OriginalFileName,BackUpFileName,True
+  End Function
+  
+  Public Function WriteRenewLastMailDate(CountStartDate,LastMailDate,MailNum)
+   ChangeFileAttributes(TimeLogFile)
+   FIO.FWrite TimeLogFile,""&LastMailDate,"w","Str"
+   ChangeFileAttributes(TimeLogFile)
+   
+   Dim NowDate
+   NowDate=Now
+   
+   If FSObj.FileExists(NumLogFile) Then
+     Dim Content=""
+     Content=""&NowDate&","&LastMailDate&","&MailNum
+     ChangeFileAttributes(NumLogFile)
+     FIO.FWrite NumLogFile,Content,"a","Str"
+     ChangeFileAttributes(NumLogFile)
+   Else
+    Dim Header
+    Header="ãƒ—ãƒ­ã‚°ãƒ©ãƒ å®Ÿè¡Œæ™‚åˆ»,ãã®æ™‚ç‚¹ã§ã®æœ€æ–°ã®ãƒ¡ãƒ¼ãƒ«æ™‚åˆ»,"&FirstDate&"ã‹ã‚‰ãã®æ™‚ç‚¹ã¾ã§ã®ç´¯ç©ãƒ¡ãƒ¼ãƒ«æ•°"
+    Dim Body
+    Body=""&NowDate&","&LastMailDate&","&MailNum
+    Dim Contents(1)
+    Contents(0)=Header
+    Contents(1)=Content
+    ChangeFileAttributes(NumLogFile)
+    FIO.FWrite NumLogFile,Contents,"w","Array"
+    ChangeFileAttributes(NumLogFile)
+   End If
+   
+   Dim yymmddhhmmssStr
+   yymmddhhmmssStr=ToyymmddhhmmssStr(NowDate)
+   Dim BackupSaveLogFile
+   BackupSaveLogFile=BackupLogFolder&"\outlook_mail_dest_list_"&yymmddhhmmssStr&"_backup.csv"
+   Copy OriginalFileName,BackupSaveLogFile,True
+  End Function
+    
+  
+  Public Copy(Src,Dst,Block)
+    If Block Then
+      ChangeFileAttributes(Dst)
+    End If
+    
+    FSObj.CopyFile Src,Dst,True
+    
+    If Block Then
+      ChangeFileAttributes(Dst)
+    End If
+  End Function
+  
+  Public Function ToyymmddhhmmssStr(NowDate)
+   ToyymmddhhmmssStr=Year(NowDate)&PadZero(Month(NowDate),2)&PadZero(Date(NowDate),2)&PadZero(Hour(NowDate),2)&PadZero(Minute(NowDate),2)&PadZero(Second(NowDate),2)
+  End Function
+  
+  Public PadZero(Before,Num)
+    Dim BeforeInt
+    BeforeInt=CLng(Num)
+    Dim Result
+    Result=""
+    Dim Digit
+    Digit=1
+    Dim DigitNum
+    Dim i
+    For i=1 To Num
+      DigitNum=((BeforeInt\Digit) Mod 10)
+      Result=""&DigitNum&Result
+      Digit=Digit*10
+    Next
+    PadZero=Result
+  End Function
+     
+  Public ChangeFileAttributes(FName)
+    Dim FObj
+    If FSObj.FileExists(FName) Then
+     Set FObj=FSObj.GetFile(FName)
+     Select Case FObj.attributes
+       Case 0
+         FObj.attributes=1
+       Case Else
+         FObj.attributes=0
+     End Select
+     Set FObj=Nothing
+    End If
+  End Function
+       
+End Class
+  
+Function MailEquals(One,Other)
+ 
+ On Error Resume Next
+  If One.SenderEMailAddress <> Other.SenderEMailAddress Then
+    MailEquals=False
+    Exit Function
+  End If
+  
+  If Err.Number <> 0 Then
+    Exit Function
+  End If
+  
+  If One.SenderName <> Other.SenderName Then
+    MailEquals=False
+    Exit Function
+  End If
+  
+  If One.ReceivedTime <> Other.ReceivedTime Then
+    MailEquals=False
+    Exit Function
+  End If
+  
+  If One.Subject <> Other.Subject Then
+    MailEquals=False
+    Exit Function
+  End If
+  
+ On Error GoTo 0
+ 
+ MailEquals=True
+ 
+End Function
+
+Function HasMailInFolder(MailItem,Folder)
+  Dim i
+  Dim Result
+  For i=1 To Folder.Items.Count
+   Result=MailEquals(MailItem,Folder.Items(i))
+   If Result Then
+     HasMailInFolder=True
+     Exit Function
+   ElseIf IsEmpty(Result) Then
+     Exit Function
+   End If
+  Next
+  
+  HasMailInFolder=False
+
+End Function
+   
+    
+    
+    
   
 Class Manager
 
@@ -119,7 +608,7 @@ Class Manager
     Next
   End Sub
   
-  'ƒ[ƒ‹‚ğƒJƒEƒ“ƒg‚·‚é(ƒJƒEƒ“ƒg‚ª0A‚Â‚Ü‚è‚Ü‚¾‚»‚Ìˆ¶æ‚©‚ç‚Ìƒ[ƒ‹‚ª‘¶İ‚µ‚È‚¢ê‡‚Í,V‚µ‚­ƒIƒuƒWƒFƒNƒg‚ğì‚é)
+  'ãƒ¡ãƒ¼ãƒ«ã‚’ã‚«ã‚¦ãƒ³ãƒˆã™ã‚‹(ã‚«ã‚¦ãƒ³ãƒˆãŒ0ã€ã¤ã¾ã‚Šã¾ã ãã®å®›å…ˆã‹ã‚‰ã®ãƒ¡ãƒ¼ãƒ«ãŒå­˜åœ¨ã—ãªã„å ´åˆã¯,æ–°ã—ãã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã‚’ä½œã‚‹)
   Public Function Count(addr,name,date)
    Dim i
    For i=1 To UBound(AddrNumLists)
@@ -133,13 +622,13 @@ Class Manager
    ReDim Preserve AddrNumLists (UBound(AddrNumLists)+1)
    Dim NumObj
    Set NumObj=new AddrNumSet
-   NumObj.SetValue addr,name,"1","íœÏ‚İ‚ÖˆÚ“®"
+   NumObj.SetValue addr,name,"1","å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
    NumObj.AddDataPool date
    Set AddrNumLists(UBound(AddrNumLists))=NumObj
    
   End Function
   
-  '‚»‚Ìˆ¶æ‚©‚ç‚Ìƒ[ƒ‹‚Ì”‚ğ•Ô‚·
+  'ãã®å®›å…ˆã‹ã‚‰ã®ãƒ¡ãƒ¼ãƒ«ã®æ•°ã‚’è¿”ã™
   Public Function getNum(addr,name)
    For i=LBound(AddrNumLists) To UBound(AddrNumLists)
      If addr = AddrNumLists(i).GetAddress And AddrNumLists(i).getName = name Then
@@ -150,7 +639,7 @@ Class Manager
    getNum=0
   End Function
   
-  '‚»‚Ìˆ¶æ‚Ìƒ[ƒ‹‚ğ‚Ç‚Ì‚æ‚¤‚Éˆµ‚¤‚©(íœÏ‚İ‚ÖˆÚ“®iƒfƒtƒHƒ‹ƒg)‚©A•Û‘¶‚©,Š®‘Síœ‚©)
+  'ãã®å®›å…ˆã®ãƒ¡ãƒ¼ãƒ«ã‚’ã©ã®ã‚ˆã†ã«æ‰±ã†ã‹(å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•ï¼ˆãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ)ã‹ã€ä¿å­˜ã‹,å®Œå…¨å‰Šé™¤ã‹)
   Public Function GetState(addr,name)
     Dim i
     For i=1 To UBound(AddrNumLists)
@@ -159,11 +648,11 @@ Class Manager
        Exit Function
      End If
    Next
-   GetState="íœÏ‚İ‚ÖˆÚ“®"
+   GetState="å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
   End Function
   
-  'ƒ[ƒ‹‚ğ’²‚×‚é‚É‚ ‚½‚è,•Û‘¶ƒ[ƒ‹‚Ìd•¡ƒJƒEƒ“ƒg‚ğ”ğ‚¯‚é‚½‚ß,‘O‰ñAƒ[ƒ‹‚Ì”‚ğƒJƒEƒ“ƒg‚µ‚½‚Ì‚Í‚¢‚Â‚È‚Ì‚©‚ğ“¾‚é
-  '•Û‘¶ƒ[ƒ‹‚É“ü‚Á‚Ä‚¢‚é,‚±‚Ì“ú•t‚æ‚è‘O‚Ìƒ[ƒ‹‚ÉŠÖ‚µ‚Ä‚Í‚·‚Å‚ÉƒJƒEƒ“ƒg‚µ‚Ä‚¢‚é‚Ì‚ÅƒJƒEƒ“ƒg‚µ‚È‚¢
+  'ãƒ¡ãƒ¼ãƒ«ã‚’èª¿ã¹ã‚‹ã«ã‚ãŸã‚Š,ä¿å­˜ãƒ¡ãƒ¼ãƒ«ã®é‡è¤‡ã‚«ã‚¦ãƒ³ãƒˆã‚’é¿ã‘ã‚‹ãŸã‚,å‰å›ã€ãƒ¡ãƒ¼ãƒ«ã®æ•°ã‚’ã‚«ã‚¦ãƒ³ãƒˆã—ãŸã®ã¯ã„ã¤ãªã®ã‹ã‚’å¾—ã‚‹
+  'ä¿å­˜ãƒ¡ãƒ¼ãƒ«ã«å…¥ã£ã¦ã„ã‚‹,ã“ã®æ—¥ä»˜ã‚ˆã‚Šå‰ã®ãƒ¡ãƒ¼ãƒ«ã«é–¢ã—ã¦ã¯ã™ã§ã«ã‚«ã‚¦ãƒ³ãƒˆã—ã¦ã„ã‚‹ã®ã§ã‚«ã‚¦ãƒ³ãƒˆã—ãªã„
   Public Function GetModifiedFileDate()
     GetModifiedFileDate=FDate
   End Function
@@ -172,12 +661,12 @@ Class Manager
    Dim FObj
    Dim FSObj
    Set FSObj=CreateObject("Scripting.FileSystemObject")
-   'ƒƒOƒtƒ@ƒCƒ‹‚©‚çÅŒã‚Éƒ[ƒ‹‚ğƒ`ƒFƒbƒN‚µ‚½“ú•tî•ñ‚ğ“¾‚é
+   'ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã‹ã‚‰æœ€å¾Œã«ãƒ¡ãƒ¼ãƒ«ã‚’ãƒã‚§ãƒƒã‚¯ã—ãŸæ—¥ä»˜æƒ…å ±ã‚’å¾—ã‚‹
    If FSObj.FileExists(LogFile) Then
      FSObj.GetFile(LogFile).attributes=0
      FDate=GetRealModifiedDate
    ElseIf FSObj.FileExists(FileName) Then
-     'Logƒtƒ@ƒCƒ‹‚ª‚È‚©‚Á‚½ê‡‚±‚Ì“ú•t‚Å‘ã—p‚·‚é
+     'Logãƒ•ã‚¡ã‚¤ãƒ«ãŒãªã‹ã£ãŸå ´åˆã“ã®æ—¥ä»˜ã§ä»£ç”¨ã™ã‚‹
      FDate=FSObj.GetFile(FileName).DateLastModified
    ElseIf FSObj.FileExists(BackupFileName) Then
      FDate=FSObj.GetFile(BackupFileName).DateLastModified
@@ -216,12 +705,12 @@ Class Manager
    FReader.LineSeparator=10
    FReader.Open
   
-   'ƒtƒ@ƒCƒ‹‚©‚çƒf[ƒ^‚ğæ“¾‚·‚éÛ‚É,‚»‚Ìƒtƒ@ƒCƒ‹©‘Ì‚ªŠJ‚©‚ê‚Ä‚¢‚½‚ÍƒGƒ‰[‚ªo‚é‚Ì‚Å,File‚ª•Â‚¶‚ç‚ê‚é‚Ü‚Å‰i‹vƒ‹[ƒv‚·‚é
+   'ãƒ•ã‚¡ã‚¤ãƒ«ã‹ã‚‰ãƒ‡ãƒ¼ã‚¿ã‚’å–å¾—ã™ã‚‹éš›ã«,ãã®ãƒ•ã‚¡ã‚¤ãƒ«è‡ªä½“ãŒé–‹ã‹ã‚Œã¦ã„ãŸæ™‚ã¯ã‚¨ãƒ©ãƒ¼ãŒå‡ºã‚‹ã®ã§,FileãŒé–‰ã˜ã‚‰ã‚Œã‚‹ã¾ã§æ°¸ä¹…ãƒ«ãƒ¼ãƒ—ã™ã‚‹
    Do While FileOpen
      On Error Resume Next
       FReader.LoadFromFile FName
       
-      'ƒGƒ‰[‚ª‚È‚©‚Á‚½iƒtƒ@ƒCƒ‹‚ª•Â‚¶‚ç‚ê‚Ä‚¢‚½‚ç),‚±‚±‚É‚½‚Ç‚è’…‚­‚Ì‚Å,FileOpenƒtƒ‰ƒO‚ğ‰µ‚µ‚Ä,ƒ‹[ƒv‚ğ”²‚¯‚é
+      'ã‚¨ãƒ©ãƒ¼ãŒãªã‹ã£ãŸï¼ˆãƒ•ã‚¡ã‚¤ãƒ«ãŒé–‰ã˜ã‚‰ã‚Œã¦ã„ãŸã‚‰),ã“ã“ã«ãŸã©ã‚Šç€ãã®ã§,FileOpenãƒ•ãƒ©ã‚°ã‚’å¸ã—ã¦,ãƒ«ãƒ¼ãƒ—ã‚’æŠœã‘ã‚‹
       If Err.Number = 0 Then
         FileOpen=False
       End If
@@ -230,8 +719,8 @@ Class Manager
    Loop
        
      
-   '1s–Ú‚Íƒwƒbƒ_‚È‚Ì‚Åî•ñ‚Æ‚µ‚Ä•K—v‚È‚¢B
-   '‚Æ‚è‚ ‚¦‚¸,1‰ñ‘S•”‚Ìs‚É‚Â‚¢‚Äƒf[ƒ^‚ğæ“¾‚·‚é
+   '1è¡Œç›®ã¯ãƒ˜ãƒƒãƒ€ãªã®ã§æƒ…å ±ã¨ã—ã¦å¿…è¦ãªã„ã€‚
+   'ã¨ã‚Šã‚ãˆãš,1å›å…¨éƒ¨ã®è¡Œã«ã¤ã„ã¦ãƒ‡ãƒ¼ã‚¿ã‚’å–å¾—ã™ã‚‹
    Dim AllData ()
    Dim LineNum
    Dim OneLine
@@ -250,7 +739,7 @@ Class Manager
    Dim i
    Dim AllDataWithoutBr
      
-   'ƒwƒbƒ_‚Í‚¢‚ç‚È‚¢‚Ì‚Å1”Ô–Ú‚©‚çæ“¾‚·‚éB‚»‚µ‚ÄÅŒã‚Ìs‚Í‡Œv‚È‚Ì‚Å‚»‚ê‚à‚¢‚ç‚È‚¢
+   'ãƒ˜ãƒƒãƒ€ã¯ã„ã‚‰ãªã„ã®ã§1ç•ªç›®ã‹ã‚‰å–å¾—ã™ã‚‹ã€‚ãã—ã¦æœ€å¾Œã®è¡Œã¯åˆè¨ˆãªã®ã§ãã‚Œã‚‚ã„ã‚‰ãªã„
    For i=1 To UBound(AllData)-1
      AllDataWithoutBr=Replace(AllData(i),VbCr,"")
      OneData=Split(AllDataWithoutBr,",")
@@ -259,7 +748,7 @@ Class Manager
      If UBound(OneData) = 4 Then
        NumObj.SetValue OneData(0),oneData(1),OneData(3),OneData(4)
      ElseIf UBound(OneData) >= 3 Then
-       NumObj.SetValue OneData(0),oneData(1),OneData(3),"íœÏ‚İ‚ÖˆÚ“®"
+       NumObj.SetValue OneData(0),oneData(1),OneData(3),"å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•"
      End If
      NumObj.SetFirstDate OneData(2)
      Set AddrNumLists(UBound(AddrNumLists))=NumObj
@@ -299,7 +788,7 @@ Class Manager
     
   End Function
   
-  '‰‚ß‚Äƒtƒ@ƒCƒ‹‚É‘‚«‚ŞÛ,•\¦‡‚ğŠÔ‡‚É‚·‚é•K—v‚ª‚ ‚é
+  'åˆã‚ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«æ›¸ãè¾¼ã‚€éš›,è¡¨ç¤ºé †ã‚’æ™‚é–“é †ã«ã™ã‚‹å¿…è¦ãŒã‚ã‚‹
   Public Function DateSort()  
     Dim i
     Dim j
@@ -311,8 +800,8 @@ Class Manager
    For i=2 To UBound(AddrNumLists)
       
       j=i
-      'VBS‚Å‚Í’Z—•]‰¿‚µ‚Ä‚­‚ê‚È‚¢‚Ì‚Å,ˆê”ÔÅ‰‚ÌƒCƒ“ƒfƒbƒNƒX‚æ‚è‘O‚ÌƒCƒ“ƒfƒbƒNƒX‚ÉƒAƒNƒZƒX‚µ‚Ä‚µ‚Ü‚¢ƒGƒ‰[‚ªo‚é‚Ì‚Å
-      '‚±‚±‚Å‚Í,ˆê”ÔÅ‰‚ÌƒCƒ“ƒfƒbƒNƒX‚Ì1‚Â‘O‚Ü‚Å‚ÌƒCƒ“ƒfƒbƒNƒX‚É‚Â‚¢‚Äƒ\[ƒg‚µ
+      'VBSã§ã¯çŸ­çµ¡è©•ä¾¡ã—ã¦ãã‚Œãªã„ã®ã§,ä¸€ç•ªæœ€åˆã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã‚ˆã‚Šå‰ã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã«ã‚¢ã‚¯ã‚»ã‚¹ã—ã¦ã—ã¾ã„ã‚¨ãƒ©ãƒ¼ãŒå‡ºã‚‹ã®ã§
+      'ã“ã“ã§ã¯,ä¸€ç•ªæœ€åˆã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã®1ã¤å‰ã¾ã§ã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã«ã¤ã„ã¦ã‚½ãƒ¼ãƒˆã—
       Do While (j > head+1) And(AddrNumLists(j-1).GetFirstDate() > AddrNumLists(j).GetFirstDate())
         Set tmp=AddrNumLists(j)
         Set AddrNumLists(j)=AddrNumLists(j-1)
@@ -320,7 +809,7 @@ Class Manager
         j=j-1
       Loop
       
-      'ÅŒã‚ÌƒCƒ“ƒfƒbƒNƒX‚¾‚¯‚±‚±‚Å•Ê“rs‚¤
+      'æœ€å¾Œã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã ã‘ã“ã“ã§åˆ¥é€”è¡Œã†
       If (AddrNumLists(head).GetFirstDate() > AddrNumLists(head+1).GetFirstDate()) Then
         Set tmp=AddrNumLists(head)
         Set AddrNumLists(head)=AddrNumLists(head+1)
@@ -352,7 +841,7 @@ Class Manager
     Dim FirstDate
     FirstDate=AddrNumLists(1).GetFirstDate
     
-    Header="ƒ[ƒ‹ƒAƒhƒŒƒX,ˆ¶–¼,"&FirstDate&"ˆÈ~‚ÅÅ‚à‘‚­‚»‚Ìˆ¶æ‚©‚çƒ[ƒ‹‚ª“Í‚¢‚½“ú•t,"&FirstDate&"‚©‚ç"&Today&"‚Ü‚Å‚É“Í‚¢‚½ƒ[ƒ‹‚Ì”,ƒ[ƒ‹‚Ìæ‚èˆµ‚¢"
+    Header="ãƒ¡ãƒ¼ãƒ«ã‚¢ãƒ‰ãƒ¬ã‚¹,å®›å,"&FirstDate&"ä»¥é™ã§æœ€ã‚‚æ—©ããã®å®›å…ˆã‹ã‚‰ãƒ¡ãƒ¼ãƒ«ãŒå±Šã„ãŸæ—¥ä»˜,"&FirstDate&"ã‹ã‚‰"&Today&"ã¾ã§ã«å±Šã„ãŸãƒ¡ãƒ¼ãƒ«ã®æ•°,ãƒ¡ãƒ¼ãƒ«ã®å–ã‚Šæ‰±ã„"
     Set FWriter=Wscript.CreateObject("ADODB.Stream")
     FWriter.Type=2
     FWriter.Charset="UTF-8"
@@ -361,7 +850,7 @@ Class Manager
     
     Dim i
     
-    '‡Œvƒ[ƒ‹”(1”ÔÅŒã‚Ìs‚É‘‚¢‚Ä‚¨‚­)
+    'åˆè¨ˆãƒ¡ãƒ¼ãƒ«æ•°(1ç•ªæœ€å¾Œã®è¡Œã«æ›¸ã„ã¦ãŠã)
     Dim MailSum
     MailSum=GetSumMailNum()
     
@@ -370,7 +859,7 @@ Class Manager
    Next
    
     
-    FWriter.WriteText "‡Œv,,,"&MailSum&",",1
+    FWriter.WriteText "åˆè¨ˆ,,,"&MailSum&",",1
     
     Dim FileOpen
     FileOpen=True
@@ -391,7 +880,7 @@ Class Manager
      
     Dim CpyFso
     Set CpyFso=Wscript.CreateObject("Scripting.FileSystemObject")
-    'ƒoƒbƒNƒAƒbƒvƒtƒ@ƒCƒ‹‚ª‚È‚¢ê‡ƒGƒ‰[‚ªo‚é
+    'ãƒãƒƒã‚¯ã‚¢ãƒƒãƒ—ãƒ•ã‚¡ã‚¤ãƒ«ãŒãªã„å ´åˆã‚¨ãƒ©ãƒ¼ãŒå‡ºã‚‹
     On Error Resume Next
       CpyFso.GetFile(BackupFileName).attributes=0
     On Error GoTo 0 
@@ -414,7 +903,7 @@ Class Manager
     
   End Function
   
-  'ƒ`ƒFƒbƒN‚µ‚½“ú•t‚ğƒƒO‚É‹L˜^
+  'ãƒã‚§ãƒƒã‚¯ã—ãŸæ—¥ä»˜ã‚’ãƒ­ã‚°ã«è¨˜éŒ²
   Public Function LogWrite(LastMailDate)
     Dim FWriter
     Set FWriter=Wscript.CreateObject("ADODB.Stream")
@@ -482,7 +971,7 @@ Class Manager
       Loop
       
     Else
-      FWriter.WriteText "ƒvƒƒOƒ‰ƒ€Às,‚»‚Ì“_‚Å‚ÌÅV‚Ìƒ[ƒ‹,"&FirstDate&"‚©‚ç‚»‚Ì“_‚Ü‚Å‚Ì—İÏƒ[ƒ‹”",1
+      FWriter.WriteText "ãƒ—ãƒ­ã‚°ãƒ©ãƒ å®Ÿè¡Œæ™‚åˆ»,ãã®æ™‚ç‚¹ã§ã®æœ€æ–°ã®ãƒ¡ãƒ¼ãƒ«æ™‚åˆ»,"&FirstDate&"ã‹ã‚‰ãã®æ™‚ç‚¹ã¾ã§ã®ç´¯ç©ãƒ¡ãƒ¼ãƒ«æ•°",1
       FWriter.WriteText Now&","&LastMailDate&","&MailNum,1
       Do While FileOpen
        On Error Resume Next
@@ -553,52 +1042,52 @@ Function Main()
 
   Dim addressInfo()
 
-  'outlook‚ÉƒAƒNƒZƒX
+  'outlookã«ã‚¢ã‚¯ã‚»ã‚¹
   Set outlook=Wscript.CreateObject("Outlook.Application")
 
-  'outlook‚Ìƒ[ƒ‹‚ÉƒAƒNƒZƒX‚·‚é‚½‚ß‚ÌƒCƒ“ƒ^[ƒtƒF[ƒX
+  'outlookã®ãƒ¡ãƒ¼ãƒ«ã«ã‚¢ã‚¯ã‚»ã‚¹ã™ã‚‹ãŸã‚ã®ã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹
   Set namespace=outlook.GetNameSpace("MAPI")
   
 
-  'outlook‚ÌóMƒtƒHƒ‹ƒ_
+  'outlookã®å—ä¿¡ãƒ•ã‚©ãƒ«ãƒ€
   Set receiveFolder=namespace.GetDefaultFolder(6)
   
-  'íœÏ‚İƒtƒHƒ‹ƒ_
+  'å‰Šé™¤æ¸ˆã¿ãƒ•ã‚©ãƒ«ãƒ€
   Dim deletedFolder
   Set deletedFolder=namespace.GetDefaultFolder(3)
   
   
   
-  'ƒeƒXƒg—pŠ®‘SíœÏ‚İƒtƒHƒ‹ƒ_\(ƒeƒXƒg‚Ì‚Í‚¢‚«‚È‚èŠ®‘Síœ‚µ‚È‚¢)
+  'ãƒ†ã‚¹ãƒˆç”¨å®Œå…¨å‰Šé™¤æ¸ˆã¿ãƒ•ã‚©ãƒ«ãƒ€â€•(ãƒ†ã‚¹ãƒˆã®æ™‚ã¯ã„ããªã‚Šå®Œå…¨å‰Šé™¤ã—ãªã„)
   Dim testCompDeleteFolder
   Set testCompDeleteFolder=deletedFolder.Folders("test_comp_delete")
   
   
-  'outlook‚ğÅ¬‰»‚µ‚Ä‹N“®(‘Šè‚Éoutlook‚ª‹N“®‚µ‚Ä‚¢‚é‚±‚Æ‚ª‚í‚©‚ç‚È‚¢‚æ‚¤‚É‚·‚é)
+  'outlookã‚’æœ€å°åŒ–ã—ã¦èµ·å‹•(ç›¸æ‰‹ã«outlookãŒèµ·å‹•ã—ã¦ã„ã‚‹ã“ã¨ãŒã‚ã‹ã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹)
   Set Wsh=Wscript.CreateObject("Wscript.shell")
   Wsh.Run "outlook.exe",7,False
 
 
-  'ƒ[ƒ‹‚ÌƒJƒEƒ“ƒg‚È‚Ç‚ğs‚¤ŠÇ—ƒNƒ‰ƒX
+  'ãƒ¡ãƒ¼ãƒ«ã®ã‚«ã‚¦ãƒ³ãƒˆãªã©ã‚’è¡Œã†ç®¡ç†ã‚¯ãƒ©ã‚¹
   Dim CountManager
 
   Set CountManager=new Manager
   
   
-  'ƒtƒ@ƒCƒ‹“Ç
+  'ãƒ•ã‚¡ã‚¤ãƒ«èª­è¾¼
   CountManager.FRead()
   
  
   
-  'ƒ[ƒ‹‚Ìˆµ‚¢•û(ƒ[ƒ‹‚Ìˆ¶æ‚É‚æ‚Á‚Äƒ[ƒ‹‚Ìˆ—‚Ìd•û‚ğ•Ï‚¦‚é)
-  'íœÏ‚İ‚ÖˆÚ“®iƒfƒtƒHƒ‹ƒg)‚©,Š®‘Síœ‚©,•Û‘¶‚©
+  'ãƒ¡ãƒ¼ãƒ«ã®æ‰±ã„æ–¹(ãƒ¡ãƒ¼ãƒ«ã®å®›å…ˆã«ã‚ˆã£ã¦ãƒ¡ãƒ¼ãƒ«ã®å‡¦ç†ã®ä»•æ–¹ã‚’å¤‰ãˆã‚‹)
+  'å‰Šé™¤æ¸ˆã¿ã¸ç§»å‹•ï¼ˆãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ)ã‹,å®Œå…¨å‰Šé™¤ã‹,ä¿å­˜ã‹
   Dim MailOperation
  
-  'ƒ[ƒ‹
+  'ãƒ¡ãƒ¼ãƒ«
   Dim OneMailItem
    
-  '‚à‚µ‚à‚Æ‚Á‚Ä‚¨‚«‚½‚¢ƒ[ƒ‹‚ªo‚½‚ç‚±‚Ì•Ï”‚ğ—p‚¢‚Ä‚Æ‚Á‚Ä‚¨‚«‚½‚¢ƒ[ƒ‹‚Ì”‚ğ•Û‘¶‚µ‚Ä‚¨‚­
-  '‚Â‚Ü‚èƒ[ƒ‹‚ğ‘€ì‚·‚éÛ‚ÌƒCƒ“ƒfƒbƒNƒX
+  'ã‚‚ã—ã‚‚ã¨ã£ã¦ãŠããŸã„ãƒ¡ãƒ¼ãƒ«ãŒå‡ºãŸã‚‰ã“ã®å¤‰æ•°ã‚’ç”¨ã„ã¦ã¨ã£ã¦ãŠããŸã„ãƒ¡ãƒ¼ãƒ«ã®æ•°ã‚’ä¿å­˜ã—ã¦ãŠã
+  'ã¤ã¾ã‚Šãƒ¡ãƒ¼ãƒ«ã‚’æ“ä½œã™ã‚‹éš›ã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹
   Dim SaveMailNum
   SaveMailNum=0
   
@@ -608,18 +1097,18 @@ Function Main()
  
  
    
-  '‚Ü‚¸‚ÍíœÏ‚İƒAƒCƒeƒ€‚É‚Â‚¢‚Ä‚İ‚Ä‚ä‚­
+  'ã¾ãšã¯å‰Šé™¤æ¸ˆã¿ã‚¢ã‚¤ãƒ†ãƒ ã«ã¤ã„ã¦ã¿ã¦ã‚†ã
   Do While SaveMailNum < deletedFolder.Items.Count
      CurrentMailNum=deletedFolder.Items.Count
      Set OneMailItem=deletedFolder.Items.Item(SaveMailNum+1)
      MailOperation=CountManager.GetState(OneMailItem.SenderEMailAddress,OneMailItem.SenderName)
      Select Case MailOperation
-       Case "•Û‘¶"
+       Case "ä¿å­˜"
         OneMailItem.Move receiveFolder
         Do While  CurrentMailNum = deletedFolder.Items.Count 
             Wscript.Sleep 1000
         Loop
-       Case "Š®‘Síœ"
+       Case "å®Œå…¨å‰Šé™¤"
         'OneMailItem.Delete
         TestDeleteMailNum=testCompDeleteFolder.Items.Count
         OneMailItem.Move testCompDeleteFolder
@@ -633,14 +1122,14 @@ Function Main()
   Loop
    
   
-  'íœÏ‚İƒAƒCƒeƒ€‚Ì•û‚ğŒ©‚½‚Ì‚ÅŸ‚ÍóMÏ‚İ‚Ì•û‚ğŒ©‚é
+  'å‰Šé™¤æ¸ˆã¿ã‚¢ã‚¤ãƒ†ãƒ ã®æ–¹ã‚’è¦‹ãŸã®ã§æ¬¡ã¯å—ä¿¡æ¸ˆã¿ã®æ–¹ã‚’è¦‹ã‚‹
   Set OneMailItem=Nothing
-  '•Û‘¶iƒtƒHƒ‹ƒ_ƒL[ƒvj‚Ìƒ[ƒ‹”‚ğ0‚É–ß‚·
+  'ä¿å­˜ï¼ˆãƒ•ã‚©ãƒ«ãƒ€ã‚­ãƒ¼ãƒ—ï¼‰ã®ãƒ¡ãƒ¼ãƒ«æ•°ã‚’0ã«æˆ»ã™
   SaveMailNum=0
   MailOperation=""
  
-  'Ÿ‚ÍóMƒAƒCƒeƒ€‚Ì’†‚ğŒ©‚Ä‚ä‚­‚ª,óMƒAƒCƒeƒ€‚Ì“Ç‚İ‚İ‚Æ‚±‚Ìˆ—‚Í”ñ“¯Šú‚Å‚ ‚é‚±‚Æ‚©‚ç­‚µƒ^ƒCƒ€ƒ‰ƒO‚ğİ‚¯‚é•K—v‚ª‚ ‚é
-  'ƒ^ƒCƒ€ƒ‰ƒO—p‚Ì•Ï”
+  'æ¬¡ã¯å—ä¿¡ã‚¢ã‚¤ãƒ†ãƒ ã®ä¸­ã‚’è¦‹ã¦ã‚†ããŒ,å—ä¿¡ã‚¢ã‚¤ãƒ†ãƒ ã®èª­ã¿è¾¼ã¿ã¨ã“ã®å‡¦ç†ã¯éåŒæœŸã§ã‚ã‚‹ã“ã¨ã‹ã‚‰å°‘ã—ã‚¿ã‚¤ãƒ ãƒ©ã‚°ã‚’è¨­ã‘ã‚‹å¿…è¦ãŒã‚ã‚‹
+  'ã‚¿ã‚¤ãƒ ãƒ©ã‚°ç”¨ã®å¤‰æ•°
   Dim NormSec
   NormSec=60
   
@@ -660,15 +1149,15 @@ Function Main()
   Dim EnterTime
   EnterTime=0
  
-  'ÅŒã‚É‚¢‚Âƒ[ƒ‹‚ÌƒJƒEƒ“ƒg‚ğs‚Á‚½‚Ì‚©‚ğ“¾‚é(•Û‘¶ƒtƒHƒ‹ƒ_‚©‚çd•¡ƒJƒEƒ“ƒg‚ğ‚µ‚È‚¢‚æ‚¤‚É)
+  'æœ€å¾Œã«ã„ã¤ãƒ¡ãƒ¼ãƒ«ã®ã‚«ã‚¦ãƒ³ãƒˆã‚’è¡Œã£ãŸã®ã‹ã‚’å¾—ã‚‹(ä¿å­˜ãƒ•ã‚©ãƒ«ãƒ€ã‹ã‚‰é‡è¤‡ã‚«ã‚¦ãƒ³ãƒˆã‚’ã—ãªã„ã‚ˆã†ã«)
   Dim LastCountMailDate
   LastCountMailDate=CountManager.GetModifiedFileDate()
   
   
-  'ƒJƒEƒ“ƒ^•Ï”
+  'ã‚«ã‚¦ãƒ³ã‚¿å¤‰æ•°
   Dim i
   
-  'ƒ[ƒ‹‚Ìî•ñ
+  'ãƒ¡ãƒ¼ãƒ«ã®æƒ…å ±
   Dim Addr
   Dim Name
   Dim Time
@@ -687,7 +1176,7 @@ Function Main()
  
   Do While CountWaitSec < CurrentNormSec 
     Do While SaveMailNum < receiveFolder.Items.Count
-      'ƒ[ƒ‹‚ğÁ‹(íœÏ‚İƒtƒHƒ‹ƒ_j‚ÉˆÚ“®‚³‚¹‚é‚Æ,óMƒgƒŒ[‚Ìƒ[ƒ‹‚ªŒ¸‚é‚Ì‚Å,‚¸‚Á‚Æ,“¯‚¶ƒCƒ“ƒfƒbƒNƒX‚ğƒAƒNƒZƒX‚·‚é
+      'ãƒ¡ãƒ¼ãƒ«ã‚’æ¶ˆå»(å‰Šé™¤æ¸ˆã¿ãƒ•ã‚©ãƒ«ãƒ€ï¼‰ã«ç§»å‹•ã•ã›ã‚‹ã¨,å—ä¿¡ãƒˆãƒ¬ãƒ¼ã®ãƒ¡ãƒ¼ãƒ«ãŒæ¸›ã‚‹ã®ã§,ãšã£ã¨,åŒã˜ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã‚’ã‚¢ã‚¯ã‚»ã‚¹ã™ã‚‹
       EnterFlag=True
       
       On Error Resume Next
@@ -695,7 +1184,7 @@ Function Main()
        HasError=Err.Number
        If HasError <> 0 Then
          Wscript.Echo HasError
-         Wscript.Echo "ƒGƒ‰["
+         Wscript.Echo "ã‚¨ãƒ©ãƒ¼"
        End If
       On Error GoTo 0
       
@@ -704,15 +1193,18 @@ Function Main()
         Name=OneMailItem.SenderName
         Addr=OneMailItem.SenderEmailAddress
         Time=OneMailItem.ReceivedTime
+        
+        Dim  MailAlreadyHas
+        MailAlreadyHas=HasMailInFolder(OneMailItem,deletedFolder)
           
-        If HasMailInFolder(OneMailItem,deletedFolder) Then
+        If MailAlreadyHas Then
           On Error Resume Next
           OneMailItem.Delete
           'Do While  CurrentMailNum = receiveFolder.Items.Count 
             'Wscript.Sleep 1000
           'Loop
           On Error GoTo 0
-        Else
+        Else If Not IsEmpty(MailAlreadyHas) Then
           If LastCountMailDate < Time Then
             CountManager.Count Addr,Name,Time
           End If
@@ -726,27 +1218,28 @@ Function Main()
           TestFolderMailNum=testCompDeleteFolder.Items.Count
           MailOperation=CountManager.GetState(Addr,Name)
               
-          'ƒ[ƒ‹‚Ìˆµ‚¢•ûiˆ¶æ‚É‚æ‚Á‚Äƒ[ƒ‹‚ğ‚Ç‚¤ˆµ‚¤‚©)
+          'ãƒ¡ãƒ¼ãƒ«ã®æ‰±ã„æ–¹ï¼ˆå®›å…ˆã«ã‚ˆã£ã¦ãƒ¡ãƒ¼ãƒ«ã‚’ã©ã†æ‰±ã†ã‹)
            
-          '•Û‘¶‚·‚éê‡
+          'ä¿å­˜ã™ã‚‹å ´åˆ
           Select  Case MailOperation
-            Case  "•Û‘¶"
-             '‚±‚Ìƒ[ƒ‹‚ÍÁ‚³‚¸‚ÉQÆ‚·‚éƒ[ƒ‹‚ÌƒCƒ“ƒfƒbƒNƒX‚ğ1i‚ß‚é
+            Case  "ä¿å­˜"
+             'ã“ã®ãƒ¡ãƒ¼ãƒ«ã¯æ¶ˆã•ãšã«å‚ç…§ã™ã‚‹ãƒ¡ãƒ¼ãƒ«ã®ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã‚’1é€²ã‚ã‚‹
              SaveMailNum=SaveMailNum+1
               
-            Case"Š®‘Síœ"
+            Case"å®Œå…¨å‰Šé™¤"
              'On Error Resume Next
              'OneMailItem.Delete
              'On Error GoTo 0
              OneMailItem.Move testCompDeleteFolder
-             'íœ‚ªŠ®—¹‚·‚é‚Ü‚Å‘Ò‚Â
+             'å‰Šé™¤ãŒå®Œäº†ã™ã‚‹ã¾ã§å¾…ã¤
              Do While  CurrentMailNum = receiveFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
                Wscript.Sleep 1000
              Loop
              
             Case Else
+              CurrentDeletedFolderMailNum=deletedFolder.Items.Count
               OneMailItem.Move deletedFolder
-              'ˆÚ“®‚ªŠ®—¹‚·‚é‚Ü‚Å‘Ò‚Â
+              'ç§»å‹•ãŒå®Œäº†ã™ã‚‹ã¾ã§å¾…ã¤
               Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
                 Wscript.Sleep 1000
               Loop
@@ -796,9 +1289,9 @@ Function Main()
   Dim Explorer
   Set Explorer=outlook.ActiveExplorer
   
-  'Explorer‚ªæ“¾‚Å‚«‚È‚©‚Á‚½‚ç,‹­§I—¹
+  'ExplorerãŒå–å¾—ã§ããªã‹ã£ãŸã‚‰,å¼·åˆ¶çµ‚äº†
   If Explorer Is Nothing Then
-    'Outlook‚ÌI—¹
+    'Outlookã®çµ‚äº†
     Dim Locator
     Dim Service
     Dim oProc

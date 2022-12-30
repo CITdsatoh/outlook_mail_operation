@@ -84,23 +84,27 @@ Class DataManager
    
    'ファイルの内容からデータセット(メールアドレス、宛名、最初の日時、その日時以降のその宛先からのメール数、取り扱い)を作り出す
    Public Function ParseDataFromFileContent(OneData)
-    ReDim Preserve AddrNumLists(UBound(AddrNumList+1))
+    ReDim Preserve AddrNumLists(UBound(AddrNumLists)+1)
     Dim NewObj
     Set NewObj=new AddrNumSet
     If UBound(OneData) = 4 Then
        Select Case OneData(4)
         Case "保存","削除済みへ移動","完全削除"
-          NumObj.SetValue OneData(0),oneData(1),OneData(3),OneData(4)
+          NewObj.SetValue OneData(0),oneData(1),OneData(3),OneData(4)
         Case Else
-           NumObj.SetValue OneData(0),oneData(1),OneData(3),"削除済みへ移動"
+          NewObj.SetValue OneData(0),oneData(1),OneData(3),"削除済みへ移動"
        End Select
     ElseIf UBound(OneData) >= 3 Then
-       NumObj.SetValue OneData(0),OneData(1),OneData(3),"削除済みへ移動"
+       NewObj.SetValue OneData(0),OneData(1),OneData(3),"削除済みへ移動"
     End If
     On Error Resume Next
      NewObj.AddDate CDate(OneData(2))
+     If Err.Number <> 0 Then
+       NewObj.AddDate CDate("1970/1/1")
+     End If
+     Err.Clear
     On Error GoTo 0
-    AddrNumLists(UBound(AddrNumLists))=NewObj
+    Set AddrNumLists(UBound(AddrNumLists))=NewObj
     
    End Function
     
@@ -108,7 +112,7 @@ Class DataManager
    Public Function DataIndex(Address,Name)
     Dim i
     For i=1 To UBound(AddrNumLists)
-      If And AddrNumLists(i).GetAddress = Address AddrNumLists(i).GetName = Name Then
+      If AddrNumLists(i).GetAddress = Address And AddrNumLists(i).GetName = Name Then
         DataIndex=i
         Exit Function
       End If
@@ -127,21 +131,21 @@ Class DataManager
    End Function
    
    'メールをカウントする(カウントが0、つまりまだその宛先からのメールが存在しない場合は,新しくオブジェクトを作る)
-   Public Function Count(Address,Name,Date)
+   Public Function Count(Address,Name,MailDate)
     Dim index
     index=DataIndex(Address,Name)
     If index <> -1 Then
       AddrNumLists(index).NumIncrement()
-      AddrNumLists(index).AddDate Date
+      AddrNumLists(index).AddDate MailDate
       Exit Function
     End If
     
     ReDim Preserve AddrNumLists(UBound(AddrNumLists)+1)
     Dim NewObj
-    Set NewObj=New AddrNumSet
-    NumObj.SetValue Addr,Name,"1","削除済みへ移動"
-    NumObj.AddDate Date
-    Set AddrNumLists(UBound(AddrNumLists))=NumObj
+    Set NewObj=new AddrNumSet
+    NewObj.SetValue Address,Name,"1","削除済みへ移動"
+    NewObj.AddDate MailDate
+    Set AddrNumLists(UBound(AddrNumLists))=NewObj
    End Function
    
    '現時点での合計メール数
@@ -153,12 +157,7 @@ Class DataManager
     Next
   End Function
   
-  'メールの集計を開始した日の日付を取得
-  Public GetCountStartDate()
-    DateSort
-    GetCountStartDate=AddrNumLists(1).GetFirstDate
-  End Function
-  
+ 
   '与えられたメールアドレス（宛名）からのメールの数を返す
   Public Function GetNum(Address,Name)
     Dim index
@@ -213,6 +212,13 @@ Class DataManager
         
   End Function
   
+  'メールの集計を開始した日の日付を取得
+  Public Function GetCountStartDate()
+    DateSort
+    GetCountStartDate=AddrNumLists(1).GetFirstDate
+  End Function
+  
+  
   '実際にファイルに書き込むときの文字列が要素となった配列を生成する
   Public Function ToFileWriteStr()
    
@@ -224,10 +230,9 @@ Class DataManager
     Dim FirstDate
     FirstDate=GetCountStartDate
     
-    Dim Header
     Header="メールアドレス,宛名,"&FirstDate&"以降で最も早くその宛先からメールが届いた日付,"&FirstDate&"から"&Today&"までに届いたメールの数,メールの取り扱い"
     
-    Dim Content
+    Dim Content()
     ReDim Preserve Content(0)
     Content(0)=Header
     Dim i
@@ -243,7 +248,7 @@ Class DataManager
     Footer="合計,,,"&MailSum&","
     Content(UBound(Content))=Footer
     
-    Set ToFileWriteStr=Content
+    ToFileWriteStr=Content
     
   End Function
 
@@ -288,12 +293,12 @@ Class FileOperator
       If Err.Number = 0 Then
         FileOpen=False
       End If
+      Err.Clear
      On Error GoTo 0 
      
    Loop
    
-   Dim Result
-   ReDim Result()
+   Dim Result()
    Dim LineNum
    LineNum=0
    Dim OneLine
@@ -305,7 +310,7 @@ Class FileOperator
      LineNum=LineNum+1
    Loop
    
-   Set FRead=Result
+   FRead=Result
      
    FIOOperator.Close
    Set FIOOperator=Nothing
@@ -327,9 +332,10 @@ Class FileOperator
           If Err.Number = 0 Then
             FileOpen=False
           End If
+          Err.Clear
         On Error GoTo 0
        Loop
-       FIOOperator.Position=FWriter.Size
+       FIOOperator.Position=FIOOperator.Size
     End Select
     
     Select Case WriteType
@@ -351,6 +357,7 @@ Class FileOperator
         If Err.Number = 0 Then
           FileOpen=False
         End If
+        Err.Clear
       On Error GoTo 0 
     Loop
     
@@ -369,6 +376,7 @@ Class FileManager
   Public FSObj
   Public OriginalFileName
   Public BackupFileName
+  Public BackupFolder
   Public TimeLogFile
   Public NumLogFile
   Public BackupLogFolder
@@ -381,7 +389,6 @@ Class FileManager
    Dim DesktopFolder
    DesktopFolder=WshObj.SpecialFolders(4)
    OriginalFileName=DesktopFolder&"\outlook_mail_dest_list.csv"
-   Dim BackupFolder
    BackupFolder=WshObj.SpecialFolders(5)
    BackupFileName=BackupFolder&"\outlook_mail_dest_list.csv"
    BackupLogFolder=BackupFolder&"\backup"
@@ -400,12 +407,12 @@ Class FileManager
    Dim FileContents
    If FSObj.FileExists(OriginalFileName) Then
      FileContents=FIO.FRead(OriginalFileName)
-   ElseIf FSobj.FileExists(BackupFolder) Then
+   ElseIf FSobj.FileExists(BackupFileName) Then
      Dim FObj
      Set FObj=FSObj.GetFile(BackupFileName)
-     ChangeFileAttributes(BackupFileName)
-     FileContents=FIO.FRead(BackuplFileName)
-     ChangeFileAttributes(BackupFileName)
+     FObj.attributes=0
+     FileContents=FIO.FRead(BackupFileName)
+     FObj.attributes=1
      Set FObj=Nothing
    Else
      Exit Function
@@ -428,10 +435,10 @@ Class FileManager
   Public Function GetLastMailDate()
    'ログファイルから最後にメールをチェックした日付情報を得る
    If FSObj.FileExists(TimeLogFile) Then
-    ChangeFileAttributes(TimeLogFile)
+    FSObj.GetFile(TimeLogFile).attributes=0
     Dim Contents
     Contents=FIO.FRead(TimeLogFile)
-    ChangeFileAttributes(TimeLogFile)
+    FSObj.GetFile(TimeLogFile).attributes=1
     GetLastMailDate=CDate(Replace(Contents(0),VbCr,""))
    ElseIf FSObj.FileExists(OriginalFileName) Then
     'Logファイルがなかった場合この日付で代用する
@@ -447,25 +454,35 @@ Class FileManager
   '実際に結果の書き込み
   Public Function WriteResultDataManageObj(DataManageObj)
    FIO.FWrite OriginalFileName,DataManageObj.ToFileWriteStr(),"w","Array"
-   Copy OriginalFileName,BackUpFileName,True
+   Dim FObj
+   'ファイルがないとき（はじめてバックアップファイルを作成する際,ファイル自体が存在しないので,属性を変えるにも変えられないため
+   'その時はエラーを握りつぶす
+   On Error Resume Next
+     FSObj.GetFile(BackupFileName).attributes=0
+   On Error GoTo 0
+   FSObj.CopyFile OriginalFileName,BackUpFileName
+   Set FObj=FSObj.GetFile(BackupFileName)
+   FObj.attributes=1
   End Function
   
   '次回メールを調べてカウントするにあたり,今回何時何分のメールまでがカウント済みなのかを記録しておく
   '上記のように次回、どのメールからカウントすればよいのかを書くため（重複カウントを避けるため）
   Public Function WriteRenewLastMailDate(CountStartDate,LastMailDate,MailNum)
-   ChangeFileAttributes(TimeLogFile)
+   On Error Resume Next
+    FSObj.GetFile(TimeLogFile).attributes=0
+   On Error GoTo 0
    FIO.FWrite TimeLogFile,""&LastMailDate,"w","Str"
-   ChangeFileAttributes(TimeLogFile)
+   FSObj.GetFile(TimeLogFile).attributes=1
    
    Dim NowDate
    NowDate=Now
    
    If FSObj.FileExists(NumLogFile) Then
-     Dim Content=""
+     Dim Content
      Content=""&NowDate&","&LastMailDate&","&MailNum
-     ChangeFileAttributes(NumLogFile)
+     FSObj.GetFile(NumLogFile).attributes=0
      FIO.FWrite NumLogFile,Content,"a","Str"
-     ChangeFileAttributes(NumLogFile)
+     FSObj.GetFile(NumLogFile).attributes=1
    Else
     Dim Header
     Header="プログラム実行時刻,その時点での最新のメール時刻,"&CountStartDate&"からその時点までの累積メール数"
@@ -473,39 +490,27 @@ Class FileManager
     Body=""&NowDate&","&LastMailDate&","&MailNum
     Dim Contents(1)
     Contents(0)=Header
-    Contents(1)=Content
-    ChangeFileAttributes(NumLogFile)
+    Contents(1)=Body
     FIO.FWrite NumLogFile,Contents,"w","Array"
-    ChangeFileAttributes(NumLogFile)
+    FSObj.GetFile(NumLogFile).attributes=1
    End If
    
    Dim yymmddhhmmssStr
    yymmddhhmmssStr=ToyymmddhhmmssStr(NowDate)
    Dim BackupSaveLogFile
    BackupSaveLogFile=BackupLogFolder&"\outlook_mail_dest_list_"&yymmddhhmmssStr&"_backup.csv"
-   Copy OriginalFileName,BackupSaveLogFile,True
+   FSObj.CopyFile OriginalFileName,BackupSaveLogFile
+   FSObj.GetFile(BackupSaveLogFile).attributes=1
   End Function
-    
   
-  Public Copy(Src,Dst,Block)
-    If Block Then
-      ChangeFileAttributes(Dst)
-    End If
-    
-    FSObj.CopyFile Src,Dst,True
-    
-    If Block Then
-      ChangeFileAttributes(Dst)
-    End If
-  End Function
   
   Public Function ToyymmddhhmmssStr(NowDate)
-   ToyymmddhhmmssStr=Year(NowDate)&PadZero(Month(NowDate),2)&PadZero(Date(NowDate),2)&PadZero(Hour(NowDate),2)&PadZero(Minute(NowDate),2)&PadZero(Second(NowDate),2)
+   ToyymmddhhmmssStr=Year(NowDate)&PadZero(Month(NowDate),2)&PadZero(Day(NowDate),2)&PadZero(Hour(NowDate),2)&PadZero(Minute(NowDate),2)&PadZero(Second(NowDate),2)
   End Function
   
-  Public PadZero(Before,Num)
+  Public Function PadZero(Before,Num)
     Dim BeforeInt
-    BeforeInt=CLng(Num)
+    BeforeInt=CLng(Before)
     Dim Result
     Result=""
     Dim Digit
@@ -520,19 +525,6 @@ Class FileManager
     PadZero=Result
   End Function
      
-  Public ChangeFileAttributes(FName)
-    Dim FObj
-    If FSObj.FileExists(FName) Then
-     Set FObj=FSObj.GetFile(FName)
-     Select Case FObj.attributes
-       Case 0
-         FObj.attributes=1
-       Case Else
-         FObj.attributes=0
-     End Select
-     Set FObj=Nothing
-    End If
-  End Function
        
 End Class
   
@@ -545,6 +537,7 @@ Function MailEquals(One,Other)
   End If
   
   If Err.Number <> 0 Then
+    Err.Clear
     Exit Function
   End If
   
@@ -569,20 +562,23 @@ Function MailEquals(One,Other)
  
 End Function
 
-Function HasMailInFolder(MailItem,Folder)
+'第一引数として指定したメールオブジェクトが第二引数のフォルダの何番目にあるかを返す関数
+'存在すればそのインデックス,存在しなかった場合,-1を返し,第一引数が空であれば-2を返す
+Function MailIndexInFolder(MailItem,Folder)
   Dim i
   Dim Result
   For i=1 To Folder.Items.Count
    Result=MailEquals(MailItem,Folder.Items(i))
    If Result Then
-     HasMailInFolder=True
+     MailIndexInFolder=i
      Exit Function
    ElseIf IsEmpty(Result) Then
+     MailIndexInFolder=-2
      Exit Function
    End If
   Next
   
-  HasMailInFolder=False
+  MailIndexInFolder=-1
 
 End Function
 
@@ -653,12 +649,12 @@ Function Main()
   Do While SaveMailNum < deletedFolder.Items.Count
      CurrentMailNum=deletedFolder.Items.Count
      Set OneMailItem=deletedFolder.Items.Item(SaveMailNum+1)
-     MailOperation=CountManager.GetState(OneMailItem.SenderEMailAddress,OneMailItem.SenderName)
+     MailOperation=DManager.GetState(OneMailItem.SenderEMailAddress,OneMailItem.SenderName)
      Select Case MailOperation
        Case "保存"
         OneMailItem.Move receiveFolder
         Do While  CurrentMailNum = deletedFolder.Items.Count 
-            Wscript.Sleep 1000
+            Wscript.Sleep 500
         Loop
        Case "完全削除"
         'OneMailItem.Delete
@@ -666,7 +662,7 @@ Function Main()
         OneMailItem.Move testCompDeleteFolder
         'Do While  CurrentMailNum = deletedFolder.Items.Count 
         Do While TestDeleteMailNum = testCompDeleteFolder.Items.Count
-            Wscript.Sleep 1000
+            Wscript.Sleep 500
         Loop
        Case Else
         SaveMailNum=SaveMailNum+1
@@ -683,7 +679,16 @@ Function Main()
   '次は受信アイテムの中を見てゆくが,受信アイテムの読み込みとこの処理は非同期であることから少しタイムラグを設ける必要がある
   'タイムラグ用の変数
   Dim NormSec
-  NormSec=60
+  NormSec=120
+  
+  Dim AllMailNum
+  AllMailNum=receiveFolder.Items.Count+deletedFolder.Items.Count
+  
+  'メールの件数が多い場合,処理そのものに時間がかかるため,タイムラグの秒数は減らす
+  'これを減らさないとユーザーを待たせる時間が増える
+  Dim NormSecBias
+  NormSecBias=(AllMailNum\100)+1
+  NormSec=NormSec\(Sqr(NormSecBias))
   
   Dim CurrentNormSec
   CurrentNormSec=NormSec
@@ -703,7 +708,7 @@ Function Main()
  
   '最後にいつメールのカウントを行ったのかを得る(保存フォルダから重複カウントをしないように)
   Dim LastCountMailDate
-  LastCountMailDate=DManager.GetLastMailDate()
+  LastCountMailDate=FManager.GetLastMailDate()
   
   
   'カウンタ変数
@@ -716,7 +721,6 @@ Function Main()
   CurrentMailNum=receiveFolder.Items.Count
   
   Dim TestFolderMailNum
-  
   
   Dim LastMailTime
   LastMailTime=LastCountMailDate
@@ -738,6 +742,7 @@ Function Main()
          Wscript.Echo HasError
          Wscript.Echo "エラー"
        End If
+       Err.Clear
       On Error GoTo 0
       
       If HasError = 0 Then
@@ -746,17 +751,17 @@ Function Main()
         Addr=OneMailItem.SenderEmailAddress
         Time=OneMailItem.ReceivedTime
         
-        Dim  MailAlreadyHas
-        MailAlreadyHas=HasMailInFolder(OneMailItem,deletedFolder)
+        Dim  MailIndex
+        MailIndex=MailIndexInFolder(OneMailItem,deletedFolder)
           
-        If MailAlreadyHas Then
-          On Error Resume Next
-          OneMailItem.Delete
-          'Do While  CurrentMailNum = receiveFolder.Items.Count 
-            'Wscript.Sleep 1000
-          'Loop
-          On Error GoTo 0
-        Else If Not IsEmpty(MailAlreadyHas) Then
+        If MailIndex  > -1 Then
+         On Error Resume Next
+          deletedFolder.Items.Item(MailIndex).Delete
+          Err.Clear
+         On Error GoTo 0
+        End If
+        
+        If MailIndex <> -2 Then 
           If LastCountMailDate < Time Then
             DManager.Count Addr,Name,Time
           End If
@@ -779,13 +784,37 @@ Function Main()
              SaveMailNum=SaveMailNum+1
               
             Case"完全削除"
+             OneMailItem.Delete
+             '移動が完了するまで待つ
+             Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
+               Wscript.Sleep 500
+             Loop
+             Dim DeletedMailIndex
+             DeletedMailIndex=MailIndexInFolder(OneMailItem,deletedFolder)
              'On Error Resume Next
-             'OneMailItem.Delete
+             'deletedFolder.Items.Item(DeletedMailIndex).Delete
+             'Err.Clear
              'On Error GoTo 0
+             
+             'とりあえず,テスト段階では完全削除フォルダーに移動する
+             deletedFolder.Items.Item(DeletedMailIndex).Move testCompDeleteFolder
+             '削除が完了するまで待つ
+             Do While  CurrentMailNum = receiveFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
+               Wscript.Sleep 500
+             Loop
+             
+             
+              'On Error Resume Next
+              'deletedFolder.Items.Item(MailIndex).Delete
+              'Err.Clear
+              'On Error GoTo 0
+             'On Error GoTo 0
+             OneMailItem.Delete
+             
              OneMailItem.Move testCompDeleteFolder
              '削除が完了するまで待つ
              Do While  CurrentMailNum = receiveFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
-               Wscript.Sleep 1000
+               Wscript.Sleep 500
              Loop
              
             Case Else
@@ -793,14 +822,12 @@ Function Main()
               OneMailItem.Move deletedFolder
               '移動が完了するまで待つ
               Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
-                Wscript.Sleep 1000
+                Wscript.Sleep 500
               Loop
-            End Select
+          End Select
         End If
       End If
-      
-     
-       
+        
     Loop
       
     If EnterFlag Then
@@ -810,18 +837,19 @@ Function Main()
       Dim Bias
       Bias=(EnterTime+1)\2
       CurrentNormSec=NormSec\Bias
+      If CurrentNormSec < 1 Then
+        CurrentNormSec=1
+      End If
     End If
       
-    Wscript.Sleep 1000
-    
-      
+    Wscript.Sleep 500
     CountWaitSec=CountWaitSec+1
     
   Loop
   
 
   FManager.WriteResultDataManageObj DManager
-  FManager.WriteRenewLastMailDate DManager.GetrCountStartDate(),LastMailDate,DManager.GetSumMailNum()
+  FManager.WriteRenewLastMailDate DManager.GetCountStartDate(),LastMailTime,DManager.GetSumMailNum()
    
  
   Set OneMailItem=Nothing
@@ -833,8 +861,12 @@ Function Main()
   Set Fold=namespace.GetDefaultFolder(20)
   
   Do While Fold.Items.Count <> 0
-    Fold.Items(1).Delete
-    Wscript.Sleep 1000
+    On Error Resume Next
+     Fold.Items(1).Delete
+     Wscript.Sleep 1000
+     Err.Clear
+    On Error GoTo 0
+    
   Loop
   
   Dim Explorer

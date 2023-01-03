@@ -527,60 +527,83 @@ Class FileManager
      
        
 End Class
-  
-Function MailEquals(One,Other)
- 
- On Error Resume Next
-  If One.SenderEMailAddress <> Other.SenderEMailAddress Then
-    MailEquals=False
-    Exit Function
-  End If
-  
-  If Err.Number <> 0 Then
-    Err.Clear
-    Exit Function
-  End If
-  
-  If One.SenderName <> Other.SenderName Then
-    MailEquals=False
-    Exit Function
-  End If
-  
-  If One.ReceivedTime <> Other.ReceivedTime Then
-    MailEquals=False
-    Exit Function
-  End If
-  
-  If One.Subject <> Other.Subject Then
-    MailEquals=False
-    Exit Function
-  End If
-  
- On Error GoTo 0
- 
- MailEquals=True
- 
-End Function
 
-'第一引数として指定したメールオブジェクトが第二引数のフォルダの何番目にあるかを返す関数
-'存在すればそのインデックス,存在しなかった場合,-1を返し,第一引数が空であれば-2を返す
-Function MailIndexInFolder(MailItem,Folder)
-  Dim i
-  Dim Result
-  For i=1 To Folder.Items.Count
-   Result=MailEquals(MailItem,Folder.Items(i))
-   If Result Then
-     MailIndexInFolder=i
-     Exit Function
-   ElseIf IsEmpty(Result) Then
-     MailIndexInFolder=-2
-     Exit Function
-   End If
-  Next
-  
-  MailIndexInFolder=-1
+'メールアイテムを完全削除する際、受信済みフォルダから一気に削除することができない
+'ゆえに完全削除の際は,「受信済みからいったん削除済みに移動してから、そこから削除」,つまり２回の移動手続きをしなければならないが
+'完全削除する際,その完全削除したいと思っているメールが削除済みフォルダのどこにあるのかを送信者情報や送信時刻などをヒントに探す必要がある
+'にもかかわらず受信済みから削除済みに移動したとき(1回目の移動の時）に、完全削除しようと思っているメールの送信者情報や送信時刻などが参照できなくなってしまう.
+'ゆえにここでは,受信済みからの移動の前に,送信者情報等を残しておく一時変数的クラスをここで「わざわざ」作っておく
 
-End Function
+Class TmpMailItem
+  Public SenderEmailAddress
+  Public SenderName
+  Public ReceivedTime
+  Public Subject
+  Public DeletedItemsFolder
+  
+  Public Sub Class_Initialize()
+  End Sub
+  
+  Public Sub Class_Terminate()
+  End Sub
+  
+  Public Function SetDeletedItemsFolder(Folder)
+   Set DeletedItemsFolder=Folder
+  End Function
+  
+  Public Function SetMailInfo(Email,Name,Time,Subj)
+   SenderEmailAddress=Email
+   SenderName=Name
+   ReceivedTime=Time
+   Subject=Subj
+  End Function
+  
+  
+  '削除済みフォルダに存在する、任意の１つのメールアイテムと,一時保存した受信済みのもの（つまり,メール情報が一致するかどうかを確かめるメソッド)
+  Public Function ItemEquals(OneMailItem)
+    If SenderEmailAddress <> OneMailItem.SenderEmailAddress Then
+      ItemEquals=False
+      Exit Function
+    End If
+    
+    If SenderName <> OneMailItem.SenderName Then
+      ItemEquals=False
+      Exit Function
+    End If
+    
+    If ReceivedTime <> OneMailItem.ReceivedTime Then
+      ItemEquals=False
+      Exit Function
+    End If
+   
+    If Subject <> OneMailItem.Subject Then
+      ItemEquals=False
+      Exit Function
+    End If
+    
+    ItemEquals=True
+    
+  End Function
+  
+  '一時保存したこのメール情報が削除済みフォルダのどのインデックスに存在するかを調べるメソッド
+  '存在する場合は存在するインデックス,存在しない場合は-1を返却する
+  Public Function MailIndexInDeletedFolder()
+    Dim OneMailItem
+    Dim i
+    For i=1 To DeletedItemsFolder.Items.Count
+      Set OneMailItem=DeletedItemsFolder.Items(i)
+       
+      If ItemEquals(OneMailItem) Then
+        MailIndexInDeletedFolder=i
+        Exit Function
+      End If
+      
+   Next
+   MailIndexInDeletedFolder=-1
+  End Function
+ 
+End Class
+  
 
 Function Main()
 
@@ -726,14 +749,19 @@ Function Main()
   LastMailTime=LastCountMailDate
   
   Dim HasError
-  HasError=0
   
   Dim CurrentDeletedFolderMailNum
+  
+  Dim TmpMailInformation
+  Set TmpMailInformation=New TmpMailItem
+  TmpMailInformation.SetDeletedItemsFolder deletedFolder
  
   Do While CountWaitSec < CurrentNormSec 
     Do While SaveMailNum < receiveFolder.Items.Count
       'メールを消去(削除済みフォルダ）に移動させると,受信トレーのメールが減るので,ずっと,同じインデックスをアクセスする
       EnterFlag=True
+      
+      HasError=0
       
       On Error Resume Next
        Set OneMailItem=receiveFolder.Items.Item(SaveMailNum+1)
@@ -751,81 +779,76 @@ Function Main()
         Addr=OneMailItem.SenderEmailAddress
         Time=OneMailItem.ReceivedTime
         
+        
+        TmpMailInformation.SetMailInfo Addr,Name,Time,OneMailItem.Subject
         Dim  MailIndex
-        MailIndex=MailIndexInFolder(OneMailItem,deletedFolder)
-          
-        If MailIndex  > -1 Then
+        MailIndex=TmpMailInformation.MailIndexInDeletedFolder
+         
+        'まずは重複メールの排除
+        If MailIndex  <> -1 Then
          On Error Resume Next
           deletedFolder.Items.Item(MailIndex).Delete
           Err.Clear
          On Error GoTo 0
         End If
         
-        If MailIndex <> -2 Then 
-          If LastCountMailDate < Time Then
-            DManager.Count Addr,Name,Time
-          End If
-            
-          If LastMailTime < Time Then
-            LastMailTime=Time
-          End If
-            
-          CurrentMailNum=receiveFolder.Items.Count
-          CurrentDeletedFolderMailNum=deletedFolder.Items.Count
-          TestFolderMailNum=testCompDeleteFolder.Items.Count
-          MailOperation=DManager.GetState(Addr,Name)
-              
-          'メールの扱い方（宛先によってメールをどう扱うか)
-           
-          '保存する場合
-          Select  Case MailOperation
-            Case  "保存"
-             'このメールは消さずに参照するメールのインデックスを1進める
-             SaveMailNum=SaveMailNum+1
-              
-            Case"完全削除"
-             OneMailItem.Delete
-             '移動が完了するまで待つ
-             Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
-               Wscript.Sleep 500
-             Loop
-             Dim DeletedMailIndex
-             DeletedMailIndex=MailIndexInFolder(OneMailItem,deletedFolder)
-             'On Error Resume Next
-             'deletedFolder.Items.Item(DeletedMailIndex).Delete
-             'Err.Clear
-             'On Error GoTo 0
-             
-             'とりあえず,テスト段階では完全削除フォルダーに移動する
-             deletedFolder.Items.Item(DeletedMailIndex).Move testCompDeleteFolder
-             '削除が完了するまで待つ
-             Do While  CurrentMailNum = receiveFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
-               Wscript.Sleep 500
-             Loop
-             
-             
-              'On Error Resume Next
-              'deletedFolder.Items.Item(MailIndex).Delete
-              'Err.Clear
-              'On Error GoTo 0
-             'On Error GoTo 0
-             OneMailItem.Delete
-             
-             OneMailItem.Move testCompDeleteFolder
-             '削除が完了するまで待つ
-             Do While  CurrentMailNum = receiveFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
-               Wscript.Sleep 500
-             Loop
-             
-            Case Else
-              CurrentDeletedFolderMailNum=deletedFolder.Items.Count
-              OneMailItem.Move deletedFolder
-              '移動が完了するまで待つ
-              Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
-                Wscript.Sleep 500
-              Loop
-          End Select
+        'メールの重複カウント(今見ているメールの時間帯がまだカウントされていない場合は)
+        If LastCountMailDate < Time Then
+          DManager.Count Addr,Name,Time
         End If
+            
+        If LastMailTime < Time Then
+           LastMailTime=Time
+        End If
+            
+        CurrentMailNum=receiveFolder.Items.Count
+        CurrentDeletedFolderMailNum=deletedFolder.Items.Count
+        TestFolderMailNum=testCompDeleteFolder.Items.Count
+        MailOperation=DManager.GetState(Addr,Name)
+              
+        'メールの扱い方（宛先によってメールをどう扱うか)
+           
+        '保存する場合
+        Select  Case MailOperation
+          Case  "保存"
+           'このメールは消さずに参照するメールのインデックスを1進める
+            SaveMailNum=SaveMailNum+1
+              
+          Case"完全削除"
+            TmpMailInformation.SetMailInfo Addr,Name,Time,OneMailItem.Subject
+            OneMailItem.Delete
+            
+            '移動が完了するまで待つ
+            Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
+              Wscript.Sleep 500
+            Loop
+            
+            Dim DeletedMailIndex
+            DeletedMailIndex=TmpMailInformation.MailIndexInDeletedFolder
+            'On Error Resume Next
+            'deletedFolder.Items.Item(DeletedMailIndex).Delete
+            'Err.Clear
+            'On Error GoTo 0
+             
+            'とりあえず,テスト段階では完全削除フォルダーに移動する
+            deletedFolder.Items.Item(DeletedMailIndex).Move testCompDeleteFolder
+            
+            CurrentDeletedFolderMailNum=deletedFolder.Items.Count
+            
+            '削除が完了するまで待つ
+            Do While   CurrentDeletedFolderMailNum = deletedFolder.Items.Count  And TestFolderMailNum = testCompDeleteFolder.Items.Count
+              Wscript.Sleep 500
+            Loop             
+         
+             
+          Case Else
+            CurrentDeletedFolderMailNum=deletedFolder.Items.Count
+            OneMailItem.Move deletedFolder
+            '移動が完了するまで待つ
+            Do While  CurrentMailNum = receiveFolder.Items.Count And  CurrentDeletedFolderMailNum = deletedFolder.Items.Count 
+              Wscript.Sleep 500
+            Loop
+        End Select
       End If
         
     Loop

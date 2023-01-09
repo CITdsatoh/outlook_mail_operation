@@ -790,15 +790,18 @@ Function Main()
           deletedFolder.Items.Item(MailIndex).Delete
           Err.Clear
          On Error GoTo 0
-        End If
-        
-        'メールの重複カウント(今見ているメールの時間帯がまだカウントされていない場合は)
-        If LastCountMailDate < Time Then
-          DManager.Count Addr,Name,Time
-        End If
-            
-        If LastMailTime < Time Then
+        '今見たメールが重複しているものでなかった場合（つまり削除済みフォルダに存在せず初めて見る場合)
+        '重複カウントを避ける
+        Else
+         'メールの重複カウント(今見ているメールの時間帯がまだカウントされていない場合は)
+         If LastCountMailDate < Time Then
+           DManager.Count Addr,Name,Time
+         End If
+              
+         If LastMailTime < Time Then
            LastMailTime=Time
+         End If
+        
         End If
             
         CurrentMailNum=receiveFolder.Items.Count

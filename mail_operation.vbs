@@ -1,5 +1,26 @@
 Option Explicit
 
+
+Function EscapeStrForCSV(ByVal CSVStr)
+  'CSVではダブルクオーテーションは「カンマを無視する」という合図であるので
+  'これを、「ダブルクオーテーションそのものである」ことを示すには,ダブルクオーテーション2つ分必要
+  EscapeStrForCSV=Replace(CSVStr,"""","""""")
+  If InStr(EscapeStrForCSV,",") > 0 Then
+    'また文字列に「,(カンマ)」が含まれていたら,それは,「文字列のカンマ」であるということを示すために逆にその文字列をダブルクオーテーションでくくる
+    EscapeStrForCSV=""""&EscapeStrForCSV&""""
+  End If
+End Function
+
+'CSV用のエスケープを解除
+Function DeEscapeStrForCSV(ByVal CSVStr)
+  'ダブルクオーテーションが二つあるときは,1つはダブルクオーテーションそのものでもう1つはダブルクオーテーションに文字列であると命令するもの
+  DeEscapeStrForCSV=Replace(CSVStr,"""""","""")
+  If InStr(DeEscapeStrForCSV,",") > 0 Then
+     DeEscapeStrForCSV=Left(DeEscapeStrForCSV,Len(EscapeStrForCSV)-Len(""""))
+    DeEscapeStrForCSV=Right(DeEscapeStrForCSV,Len(EscapeStrForCSV)-Len(""""))
+  End If
+End Function
+
 Class AddrNumSet
 
   Public DstEmailAddress
@@ -95,7 +116,7 @@ Class AddrNumSet
   Public Function ToStr()
    Dim Former
    Dim Letter
-   Former=DstEmailAddress&","&DstName&","&FirstDate&","&CumulativeMailNum
+   Former=EscapeStrForCSV(DstEmailAddress)&","&EscapeStrForCSV(DstName)&","&FirstDate&","&CumulativeMailNum
    Letter=","&(CurrentSavedMailNum+CurrentTmpMailNum)&","&CurrentSavedMailNum&","&CurrentTmpMailNum&","&State
    ToStr=Former&Letter
   End Function
@@ -127,12 +148,12 @@ Class DataManager
     If UBound(OneData) = 7 Then
        Select Case OneData(7)
         Case "保存","削除済みへ移動","完全削除"
-          NewObj.SetValue OneData(0),oneData(1),OneData(3),OneData(7)
+          NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(oneData(1)),OneData(3),OneData(7)
         Case Else
-          NewObj.SetValue OneData(0),oneData(1),OneData(3),"削除済みへ移動"
+          NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(oneData(1)),OneData(3),"削除済みへ移動"
        End Select
     ElseIf UBound(OneData) >= 3 Then
-       NewObj.SetValue OneData(0),OneData(1),OneData(3),"削除済みへ移動"
+       NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(OneData(1)),OneData(3),"削除済みへ移動"
     End If
     On Error Resume Next
      NewObj.AddDate CDate(OneData(2))
@@ -1011,6 +1032,17 @@ Function Main()
   Dim Subject
   Dim Body
   
+  '削除済みフォルダの重複削除
+  '各フォルダの重複削除は数にもよるが,線形探索的に行う場合計算量がn^2となってしまうので非常に効率が悪い
+  'よってメールの時刻が古いほうから順番に並ぶような順序付きの削除済みフォルダー(本物の削除済みフォルダーは必ずしもメールの時刻順に並んでいるわけではないため)を疑似的に定義して
+  '二分探索で重複を発見し削除する
+  
+  '順序付き受信+削除済みフォルダ(両フォルダのメールアイテム(疑似)を混ぜて,時間順に並べ二分探索で高速で重複を発見し削除する)
+  Dim TimeOrderedFolder
+  Set TimeOrderedFolder=New TimeOrderedRemoveDuplicateInFolder
+  
+  TimeOrderedFolder.RemoveDuplicateInDeletedFolder deletedFolder
+  
   
   'まずは削除済みアイテムについてみてゆく
   Do While SaveMailNum < deletedFolder.Items.Count
@@ -1046,20 +1078,10 @@ Function Main()
        Case Else
         DManager.Count Address,Name,Time,(LastCountMailDate < OneMailItem.ReceivedTime),"DeletedFolder"
         SaveMailNum=SaveMailNum+1
-    End Select
+       End Select
   Loop
    
     
-  '削除済みフォルダの重複削除
-  '各フォルダの重複削除は数にもよるが,線形探索的に行う場合計算量がn^2となってしまうので非常に効率が悪い
-  'よってメールの時刻が古いほうから順番に並ぶような順序付きの削除済みフォルダー(本物の削除済みフォルダーは必ずしもメールの時刻順に並んでいるわけではないため)を疑似的に定義して
-  '二分探索で重複を発見し削除する
-  
-  '順序付き受信+削除済みフォルダ(両フォルダのメールアイテム(疑似)を混ぜて,時間順に並べ二分探索で高速で重複を発見し削除する)
-  Dim TimeOrderedFolder
-  Set TimeOrderedFolder=New TimeOrderedRemoveDuplicateInFolder
-  
-  TimeOrderedFolder.RemoveDuplicateInDeletedFolder deletedFolder
   
   
   
@@ -1184,7 +1206,9 @@ Function Main()
         '今のメールアイテムが,「削除済みフォルダ」あるいは「すでにカウント済み(このループで見た)の受信済みフォルダ」内に既にあればそれは重複
         '扱いは完全削除と同じにする
         If HasDuplicated Then
-          MailOperation="完全削除"
+          If MailOperation <> "保存" Then
+            MailOperation="完全削除"
+          End If
           'そのメールが重複であるならもうメールは数えているということになる
           HasUnCounted=False
         End If

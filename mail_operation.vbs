@@ -805,7 +805,9 @@ Class TimeOrderedFolder
     
 End Class
 
-'ここでは受信フォルダと削除済みフォルダのメールの重複を削除するクラスを作る
+'ここでは削除済みフォルダのメールの重複を削除するクラスを作る
+'最初に「削除済みフォルダ」内の重複メールを削除してしまう。
+'その後,「受信フォルダ」を一つずつ見るときに「受信フォルダ」と「削除済みフォルダ」にまたがっているもの,あるいは,「受信フォルダ」同士の重複を削除する
 '実際は受信フォルダと削除済みアイテムは別々になっているが、このTimeOrderedReceivedAndDeletedFolderには受信フォルダと削除済みフォルダの両方合わせたメールアイテム(上で述べた疑似)をここでは格納し,重複を排除する
 'これで「受信フォルダ」のみの重複削除,「削除済みフォルダ」のみの重複削除にとどまらず,両フォルダにまたがって重複するアイテムも一括で削除できる
 Class TimeOrderedRemoveDuplicateInFolder
@@ -818,22 +820,9 @@ Class TimeOrderedRemoveDuplicateInFolder
   Public Sub Class_Terminate()
     Set TimeOrderedReceivedAndDeletedFolder=Nothing
   End Sub
-  
-  'ここでは第一引数を受信フォルダ,削除済みフォルダと分けて2回メソッドを呼ぶ(2回とも第二引数が「削除済みフォルダ」となっているが,これは,削除されたかどうかの判定に使うため)
-  'ここでは第一引数として与えられたフォルダの中身の受信時刻順の並び替えと重複削除を行う
-  'つまり1回目は「受信フォルダ」のデータの受信時刻順の並び替えと,重複削除
-  'つまり2回目は「削除済みフォルダ」のデータの受信時刻順の並び替えと,重複削除
-  '(ただし2回目の呼び出しの際は,1回目の「受信フォルダ」のデータと一緒くたにしてよい（むしろしないと,両フォルダにまたがって存在する重複アイテムが削除できない)ので,そのまま呼び出す)
-  '重複判定の基準も「受信済みor削除済み」のどちらかにあれば重複扱いする
-  'しかし
-  Public Function RemoveDuplicate(OriginalReceivedFolder,OriginalDeletedFolder)
-    RemoveDuplicateInAllFolders OriginalReceivedFolder,OriginalDeletedFolder
-    RemoveDuplicateInAllFolders OriginalDeletedFolder,OriginalDeletedFolder
-  End Function
-  
-  '2回目である「削除済みフォルダ」が第一引数としての関数呼び出しの際は1回目に呼び出した「受信フォルダ」の時のデータが残っており,そのままそれを使いまわすことが目的なので,そのまま気にせず処理)
-  '第二引数として必ず与えられる「削除済みフォルダ」はこれは削除済みフォルダのアイテム数を取得して,きちんと削除された(or削除済みに移動したか）を調べるために毎回与える(調査対象ではない)
-  Public Function  RemoveDuplicateInAllFolders(Folder,DeletedFolder)
+
+  'ここでは最初に「削除済みフォルダ」に入っているもののみを削除
+  Public Function  RemoveDuplicateInDeletedFolder(DeletedFolder)
    Dim MailItemIndex
    MailItemIndex=1
   
@@ -842,9 +831,9 @@ Class TimeOrderedRemoveDuplicateInFolder
    Set testCompDeleteFolder=DeletedFolder.Folders("test_comp_delete")
   
    '各メールアイテムを調べる
-   Do While MailItemIndex <= Folder.Items.Count
+   Do While MailItemIndex <= DeletedFolder.Items.Count
     Dim CurrentCheckingMailItem
-    Set CurrentCheckingMailItem=Folder.Items.Item(MailItemIndex)
+    Set CurrentCheckingMailItem=DeletedFolder.Items.Item(MailItemIndex)
     Dim CurrentCheckingTmpMailItem
     Set CurrentCheckingTmpMailItem=New TmpMailItem
     Dim Addr
@@ -898,6 +887,20 @@ Class TimeOrderedRemoveDuplicateInFolder
     
   Loop
  End Function
+ 
+ '「受信フォルダ」のメールアイテムを調べて削除する際,そのアイテムがすでに「(疑似)削除済みフォルダ」に存在しないかどうか調べる
+ '引数として与えるのは「受信フォルダ」の調査中のメールアイテム(メールアイテムそのものは移せないので疑似のもの）
+ '「この疑似削除済みフォルダ」に、今調べている受信フォルダの一メールアイテムが存在した場合は重複ありということなので,Trueを返す
+ '「疑似削除済みフォルダ」に今調べているメールアイテムが存在しなければ,この疑似削除済みフォルダにメールアイテムを追加し,Falseを返す.
+ 'このことによって,もともと「受信済みフォルダ」にあったアイテム同氏の重複が調べられる
+ Public Function CheckDuplicate(OneTmpMailItem)
+    CheckDuplicate=True
+    If TimeOrderedReceivedAndDeletedFolder.Find(OneTmpMailItem) = -1 Then
+       TimeOrderedReceivedAndDeletedFolder.AddData OneTmpMailItem
+       CheckDuplicate=False
+    End If
+ End Function
+ 
  
  Public Function CheckPrint()
    TimeOrderedReceivedAndDeletedFolder.CheckPrint
@@ -959,20 +962,7 @@ Function Main()
   'outlookを最小化して起動(相手にoutlookが起動していることがわからないようにする)
   Set Wsh=Wscript.CreateObject("Wscript.shell")
   Wsh.Run "outlook.exe",7,False
-  
-  'まずは削除済みフォルダ・受信済みフォルダの重複削除
-  '各フォルダの重複削除は数にもよるが,線形探索的に行う場合計算量がn^2となってしまうので非常に効率が悪い
-  'よってメールの時刻が古いほうから順番に並ぶような順序付きの削除済みフォルダー(本物の削除済みフォルダーは必ずしもメールの時刻順に並んでいるわけではないため)を疑似的に定義して
-  '二分探索で重複を発見し削除する
-  '一方,受信フォルダの重複削除も同時に行い,このクラス内では,本来別々となっている「受信フォルダ」と「削除済みフォルダ」のアイテムをあたかも同一に並んでいるかのようにして扱う(直列化)
-  'そのおかげで,「削除済みフォルダ」のメールアイテムの重複,「受信フォルダ」のメールアイテムの重複,「削除済み」と「受信」の両フォルダにまたがって存在している重複アイテムを一気に削除できる
-  
-  '順序付き受信+削除済みフォルダ(両フォルダのメールアイテム(疑似)を混ぜて,時間順に並べ二分探索で高速で重複を発見し削除する)
-  Dim TimeOrderedFolder
-  Set TimeOrderedFolder=New TimeOrderedRemoveDuplicateInFolder
-  
-  TimeOrderedFolder.RemoveDuplicate receiveFolder,deletedFolder
-  Set TimeOrderedFolder=Nothing
+
   
   'ファイルの読み書きに関する管理をするクラス
   Dim FManager
@@ -1059,6 +1049,20 @@ Function Main()
     End Select
   Loop
    
+    
+  '削除済みフォルダの重複削除
+  '各フォルダの重複削除は数にもよるが,線形探索的に行う場合計算量がn^2となってしまうので非常に効率が悪い
+  'よってメールの時刻が古いほうから順番に並ぶような順序付きの削除済みフォルダー(本物の削除済みフォルダーは必ずしもメールの時刻順に並んでいるわけではないため)を疑似的に定義して
+  '二分探索で重複を発見し削除する
+  
+  '順序付き受信+削除済みフォルダ(両フォルダのメールアイテム(疑似)を混ぜて,時間順に並べ二分探索で高速で重複を発見し削除する)
+  Dim TimeOrderedFolder
+  Set TimeOrderedFolder=New TimeOrderedRemoveDuplicateInFolder
+  
+  TimeOrderedFolder.RemoveDuplicateInDeletedFolder deletedFolder
+  
+  
+  
   
   '削除済みアイテムの方を見たので次は受信済みの方を見る
   Set OneMailItem=Nothing
@@ -1146,8 +1150,14 @@ Function Main()
         Subject=OneMailItem.Subject
         Body=OneMailItem.Body
         
-        '同じメールの重複はもうこの時点では存在しないものとする
+        'メールの重複調査
+        Set TmpOneMailItem=New TmpMailItem
+        TmpOneMailItem.SetMailInfo Address,Name,Time,Subject,Body
         
+        '重複あるかどうかのフラグ
+        Dim HasDuplicated
+        HasDuplicated=TimeOrderedFolder.CheckDuplicate(TmpOneMailItem)
+           
         
         'こちらは累積のカウントにおけるカウント済みかどうかを示すフラグ
         'たとえ、今カウント真っ最中のメールが,前回カウントしたメールの中で最も新しい日時(どのメールまでをカウントしたかを示すためのもの)より古いものであった場合,
@@ -1170,6 +1180,14 @@ Function Main()
         CurrentMailNum=receiveFolder.Items.Count
         CurrentDeletedFolderMailNum=deletedFolder.Items.Count
         MailOperation=DManager.GetState(Address,Name)
+        
+        '今のメールアイテムが,「削除済みフォルダ」あるいは「すでにカウント済み(このループで見た)の受信済みフォルダ」内に既にあればそれは重複
+        '扱いは完全削除と同じにする
+        If HasDuplicated Then
+          MailOperation="完全削除"
+          'そのメールが重複であるならもうメールは数えているということになる
+          HasUnCounted=False
+        End If
               
         'メールの扱い方（宛先によってメールをどう扱うか)
            

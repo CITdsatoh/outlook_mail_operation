@@ -21,6 +21,42 @@ Function DeEscapeStrForCSV(ByVal CSVStr)
   End If
 End Function
 
+'第一引数の文字列を,第二引数の文字列を区切り文字として配列に分割するが(ここまでは標準のsplit関数と同じ)
+'第三引数の文字列に挟まれたときは第二引数の文字列が来ても区切り文字とみなさないようにしたい
+'多言語でいう不定長の後読み先読みだが、VBSにはそんな機能はないので自前で実装
+'例えば,CSVでは「,」をデータ間の区切り文字(セル)としているが、「"(ダブルクオーテーション)」の中に挟まれたカンマは区切り文字として扱いたくない。そんな時に使う
+Function SplitExceptEscapeChar(ByVal OneStr,ByVal SplitChar,ByVal EscapeChar)
+  Dim Result ()
+  Dim Last
+  Last=0
+  Dim IsInsideOfEscapeChar
+  IsInsideOfEscapeChar=False
+  
+  Dim SplitStartIndex
+  SplitStartIndex=1
+  
+  Dim i
+  For i=1 To Len(OneStr)
+    Dim CurrentChar
+    CurrentChar=Mid(OneStr,i,1)
+    If CurrentChar = SplitChar Then
+      If Not IsInsideOfEscapeChar Then
+          ReDim Preserve Result(Last)
+          Result(Last)=Mid(OneStr,SplitStartIndex,i-SplitStartIndex)
+          SplitStartIndex=i+1
+          Last=Last+1
+      End If
+    ElseIf CurrentChar = EscapeChar Then
+       IsInsideOfEscapeChar=Not IsInsideOfEscapeChar
+    End If
+  Next
+  
+  ReDim Preserve Result(Last)
+  Result(Last)=Mid(OneStr,SplitStartIndex,Len(OneStr)-SplitStartIndex+1)
+  SplitExceptEscapeChar=Result
+  
+End Function       
+
 Class AddrNumSet
 
   Public DstEmailAddress
@@ -497,7 +533,7 @@ Class FileManager
    'ヘッダはいらないので1番目から取得する。そして最後の行は合計なのでそれもいらない
    For i=1 To UBound(FileContents)-1
      AllDataWithoutBr=Replace(FileContents(i),VbCr,"")
-     OneData=Split(AllDataWithoutBr,",")
+     OneData=SplitExceptEscapeChar(AllDataWithoutBr,",","""")
      GetDataManageObj.ParseDataFromFileContent OneData
    Next
    

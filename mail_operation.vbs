@@ -853,7 +853,7 @@ Class TimeOrderedFolder
   End Function
   
   Public Function  Item(index)
-    Items=TimeOrderedMailItem(index)
+    Item=TimeOrderedMailItem(index)
   End Function
   
   Public Property Get Count()

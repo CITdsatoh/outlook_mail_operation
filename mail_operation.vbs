@@ -62,6 +62,7 @@ Class AddrNumSet
   Public DstEmailAddress
   Public DstName
   Public FirstDate
+  Public LatestDate
   Public CumulativeMailNum
   Public CurrentSavedMailNum
   Public CurrentTmpMailNum
@@ -87,11 +88,19 @@ Class AddrNumSet
    
   End Function
   
-  Public Function AddDate(ByVal FDate)
+  Public Function AddFirstDate(ByVal FDate)
     If IsEmpty(FirstDate) Then
       FirstDate=FDate
     ElseIf FDate < FirstDate Then
       FirstDate=FDate
+    End If
+  End Function
+  
+  Public Function AddLatestDate(ByVal LDate)
+    If IsEmpty(LatestDate) Then
+       LatestDate=LDate
+    ElseIf LatestDate < LDate Then
+       LatestDate=LDate
     End If
   End Function
   
@@ -149,10 +158,14 @@ Class AddrNumSet
    GetFirstDate=FirstDate
   End Function
   
+  Public Function GetLatestDate()
+   GetLatestDate=LatestDate
+  End Function
+  
   Public Function ToStr()
    Dim Former
    Dim Letter
-   Former=EscapeStrForCSV(DstEmailAddress)&","&EscapeStrForCSV(DstName)&","&FirstDate&","&CumulativeMailNum
+   Former=EscapeStrForCSV(DstEmailAddress)&","&EscapeStrForCSV(DstName)&","&FirstDate&","&LatestDate&","&CumulativeMailNum
    Letter=","&(CurrentSavedMailNum+CurrentTmpMailNum)&","&CurrentSavedMailNum&","&CurrentTmpMailNum&","&State
    ToStr=Former&Letter
   End Function
@@ -181,20 +194,25 @@ Class DataManager
     ReDim Preserve AddrNumLists(UBound(AddrNumLists)+1)
     Dim NewObj
     Set NewObj=New AddrNumSet
-    If UBound(OneData) = 7 Then
-       Select Case OneData(7)
+    If UBound(OneData) = 8 Then
+       Select Case OneData(8)
         Case "保存","削除済みへ移動","完全削除"
-          NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(oneData(1)),OneData(3),OneData(7)
+          NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(oneData(1)),OneData(4),OneData(8)
         Case Else
-          NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(oneData(1)),OneData(3),"削除済みへ移動"
+          NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(oneData(1)),OneData(4),"削除済みへ移動"
        End Select
     ElseIf UBound(OneData) >= 3 Then
-       NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(OneData(1)),OneData(3),"削除済みへ移動"
+       NewObj.SetValue DeEscapeStrForCSV(OneData(0)),DeEscapeStrForCSV(OneData(1)),OneData(4),"削除済みへ移動"
     End If
     On Error Resume Next
-     NewObj.AddDate CDate(OneData(2))
+     NewObj.AddFirstDate CDate(OneData(2))
+     Err.Clear
+    On Error GoTo 0
+    
+    On Error Resume Next
+     NewObj.AddLatestDate CDate(OneData(3))
      If Err.Number <> 0 Then
-       NewObj.AddDate CDate("1970/1/1")
+       NewObj.AddLatestDate CDate("1970/1/1")
      End If
      Err.Clear
     On Error GoTo 0
@@ -230,7 +248,8 @@ Class DataManager
     index=DataIndex(Address,Name)
     If index <> -1 Then
       AddrNumLists(index).NumIncrement HasUnCounted,CurrentFolderName
-      AddrNumLists(index).AddDate MailDate
+      AddrNumLists(index).AddFirstDate MailDate
+      AddrNumLists(index).AddLatestDate MailDate
       Exit Function
     End If
     
@@ -239,7 +258,8 @@ Class DataManager
       Dim NewObj
       Set NewObj=new AddrNumSet
       NewObj.SetValue Address,Name,"1","削除済みへ移動"
-      NewObj.AddDate MailDate
+      NewObj.AddFirstDate MailDate
+      NewObj.AddLatestDate MailDate
       NewObj.NumIncrement False,CurrentFolderName
       Set AddrNumLists(UBound(AddrNumLists))=NewObj
     End If
@@ -328,7 +348,7 @@ Class DataManager
     Dim FirstDate
     FirstDate=GetCountStartDate
     
-    HeaderFormer="メールアドレス,宛名,"&FirstDate&"以降で最も早くその宛先からメールが届いた日付,"&FirstDate&"から"&Today&"までに届いた累積メール数(完全削除されたものも含む),"
+    HeaderFormer="メールアドレス,宛名,"&FirstDate&"以降で最も早くその宛先からメールが届いた日付,"&"その宛先からの現時点で最新のメールが届いた日付,"&FirstDate&"から"&Today&"までに届いた累積メール数(完全削除されたものも含む),"
     Header=HeaderFormer&Today&"時点で存在しているメール数(除完全削除・含削除済みフォルダ),"&Today&"時点での受信フォルダのメール数,"&Today&"時点の削除済みフォルダのメール数,メールの取り扱い"
     
     Dim Content()
@@ -350,7 +370,7 @@ Class DataManager
     ReceivedMailSum=GetSumMailNum("ReceivedFolder")
     Dim DeletedMailSum
     DeletedMailSum=GetSumMailNum("DeletedFolder")
-    Footer="合計,,,"&CumulativeMailSum&","&ExistsMailSum&","&ReceivedMailSum&","&DeletedMailSum
+    Footer="合計,,,,"&CumulativeMailSum&","&ExistsMailSum&","&ReceivedMailSum&","&DeletedMailSum
     Content(UBound(Content))=Footer
     
     ToFileWriteStr=Content
